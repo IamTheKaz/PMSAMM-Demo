@@ -1,6 +1,6 @@
 # SAM - PMSAMM Demo
 
-A single-page HTML/JavaScript demo showcasing a 3D print monitoring workflow using the **Synthetic Anomaly Model (SAM)** within the **Predictive Multi-Stage Anomaly Monitoring Model (PMSAMM)**.
+A single-page HTML/JavaScript demo showcasing a 3D print monitoring workflow using the **System for Additive Manufacturing (SAM)** 
 
 ## Overview
 
