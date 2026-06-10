@@ -555,18 +555,27 @@ async function callBedrock(reportText) {
 
     let rawText = body.response || '';
 
-    // Extract compliance fields from the compliance log section
-    let actionMatch  = rawText.match(/action_required:\s*(NONE|PAUSE_AND_INSPECT|CREW_APPROVAL|ABORT)/i);
-    let riskMatch    = rawText.match(/risk_level:\s*(LOW|MEDIUM|HIGH)/i);
-    let notifyMatch  = rawText.match(/notify_crew:\s*(true|false)/i);
-    let defectMatch  = rawText.match(/detected_defect:\s*(.+)/i);
+    // Extract compliance fields — flexible regex handles markdown, quotes, bold etc
+    let actionMatch  = rawText.match(/action[_\s-]required["'`\s:*_]+([A-Z_]+)/i);
+    let riskMatch    = rawText.match(/risk[_\s-]level["'`\s:*_]+([A-Z]+)/i);
+    let notifyMatch  = rawText.match(/notify[_\s-]crew["'`\s:*_]+(true|false)/i);
+    let defectMatch  = rawText.match(/detected[_\s-]defect["'`\s:*_]+([^\n"']+)/i);
+
+    let action   = actionMatch  ? actionMatch[1].toUpperCase().trim()  : 'MANUAL_REVIEW';
+    let risk     = riskMatch    ? riskMatch[1].toUpperCase().trim()    : 'UNKNOWN';
+    let notify   = notifyMatch  ? notifyMatch[1].toLowerCase() === 'true'
+                                : (action !== 'NONE');  // default true if any action needed
+    let defect   = defectMatch  ? defectMatch[1].trim()                : 'UNKNOWN';
+
+    // Safety rule: MANUAL_REVIEW always notifies crew
+    if(action === 'MANUAL_REVIEW') notify = true;
 
     state.claudeParsed = {
       raw_response:    rawText,
-      action_required: actionMatch  ? actionMatch[1].toUpperCase()           : 'MANUAL_REVIEW',
-      risk_level:      riskMatch    ? riskMatch[1].toUpperCase()             : 'UNKNOWN',
-      notify_crew:     notifyMatch  ? notifyMatch[1].toLowerCase() === 'true': false,
-      detected_defect: defectMatch  ? defectMatch[1].trim()                  : 'UNKNOWN'
+      action_required: action,
+      risk_level:      risk,
+      notify_crew:     notify,
+      detected_defect: defect
     };
 
     goToOutcome(false);
