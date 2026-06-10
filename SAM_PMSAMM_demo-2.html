@@ -555,20 +555,35 @@ async function callBedrock(reportText) {
 
     let rawText = body.response || '';
 
-    // Extract compliance fields — flexible regex handles markdown, quotes, bold etc
-    let actionMatch  = rawText.match(/action[_\s-]required["'`\s:*_]+([A-Z_]+)/i);
-    let riskMatch    = rawText.match(/risk[_\s-]level["'`\s:*_]+([A-Z]+)/i);
-    let notifyMatch  = rawText.match(/notify[_\s-]crew["'`\s:*_]+(true|false)/i);
-    let defectMatch  = rawText.match(/detected[_\s-]defect["'`\s:*_]+([^\n"']+)/i);
+    // Extract compliance fields — try multiple patterns
+    let action = 'MANUAL_REVIEW';
+    let risk = 'UNKNOWN';
+    let notify = true;
+    let defect = 'UNKNOWN';
 
-    let action   = actionMatch  ? actionMatch[1].toUpperCase().trim()  : 'MANUAL_REVIEW';
-    let risk     = riskMatch    ? riskMatch[1].toUpperCase().trim()    : 'UNKNOWN';
-    let notify   = notifyMatch  ? notifyMatch[1].toLowerCase() === 'true'
-                                : (action !== 'NONE');  // default true if any action needed
-    let defect   = defectMatch  ? defectMatch[1].trim()                : 'UNKNOWN';
+    // Try to find action_required
+    let am = rawText.match(/action.required[^a-zA-Z]+(NONE|PAUSE_AND_INSPECT|CREW_APPROVAL|ABORT)/i);
+    if(am) action = am[1].toUpperCase();
 
-    // Safety rule: MANUAL_REVIEW always notifies crew
-    if(action === 'MANUAL_REVIEW') notify = true;
+    // Try to find risk_level
+    let rm = rawText.match(/risk.level[^a-zA-Z]+(LOW|MEDIUM|HIGH)/i);
+    if(rm) risk = rm[1].toUpperCase();
+
+    // Try to find notify_crew
+    let nm = rawText.match(/notify.crew[^a-zA-Z]+(true|false)/i);
+    if(nm) notify = nm[1].toLowerCase() === 'true';
+    else notify = (action !== 'NONE');
+
+    // Try to find detected_defect
+    let dm = rawText.match(/detected.defect[^
+:]+[:]\s*([^
+]+)/i);
+    if(!dm) dm = rawText.match(/detected.defect\s*[:\-]\s*([^
+]+)/i);
+    if(dm) defect = dm[1].trim();
+
+    // Safety rules
+    if(action === 'MANUAL_REVIEW' || action === 'CREW_APPROVAL' || action === 'ABORT') notify = true;
 
     state.claudeParsed = {
       raw_response:    rawText,
