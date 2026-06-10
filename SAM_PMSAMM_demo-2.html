@@ -561,17 +561,28 @@ async function callBedrock(reportText) {
     });
 
     let data = await response.json();
+    let body = typeof data.body === 'string' ? JSON.parse(data.body) : data;
+    if(body.error) throw new Error(body.error);
 
-    // Lambda returns { body: "..." } as a string — parse it
-    let parsed = typeof data.body === 'string' ? JSON.parse(data.body) : data;
+    let rawText = body.response || '';
 
-    if(parsed.error) throw new Error(parsed.error);
+    // Extract compliance fields from the compliance log section
+    let actionMatch  = rawText.match(/action_required:\s*(NONE|PAUSE_AND_INSPECT|CREW_APPROVAL|ABORT)/i);
+    let riskMatch    = rawText.match(/risk_level:\s*(LOW|MEDIUM|HIGH)/i);
+    let notifyMatch  = rawText.match(/notify_crew:\s*(true|false)/i);
+    let defectMatch  = rawText.match(/detected_defect:\s*(.+)/i);
 
-    state.claudeParsed = parsed;
+    state.claudeParsed = {
+      raw_response:    rawText,
+      action_required: actionMatch  ? actionMatch[1].toUpperCase()           : 'MANUAL_REVIEW',
+      risk_level:      riskMatch    ? riskMatch[1].toUpperCase()             : 'UNKNOWN',
+      notify_crew:     notifyMatch  ? notifyMatch[1].toLowerCase() === 'true': false,
+      detected_defect: defectMatch  ? defectMatch[1].trim()                  : 'UNKNOWN'
+    };
+
     goToOutcome(false);
 
   } catch(err) {
-    // On error fall back to demo disposition
     state.claudeParsed = null;
     state.claudeError = err.message;
     goToOutcome(false, err.message);
@@ -641,32 +652,34 @@ function goToOutcome(commsLost, errorMsg) {
     html += renderSAMDisposition(j, clabel, ccolor);
 
   } else if(state.claudeParsed) {
-    // FULL PIPELINE — show Claude response and decision
+    // FULL PIPELINE — show Claude raw markdown response + decision fields
     let p = state.claudeParsed;
-    let riskColor = p.risk_level === 'HIGH' ? '#f85149' : p.risk_level === 'MEDIUM' ? '#d29922' : '#3fb950';
+    let riskColor   = p.risk_level === 'HIGH' ? '#f85149' : p.risk_level === 'MEDIUM' ? '#d29922' : '#3fb950';
     let actionColor = (p.action_required === 'NONE') ? '#3fb950' : '#f85149';
 
-    html += '<div class="resp-block" style="border-color:'+riskColor+'44;background:'+riskColor+'08;">';
-    html += '<div class="resp-src" style="color:#0033a0;">CLAUDE AI - BEDROCK ANALYSIS - HAVEN-1 AI MONITORING SPECIALIST</div>';
-    html += '<div class="outcome-header" style="color:'+riskColor+';">RISK: '+( p.risk_level || 'UNKNOWN' )+'</div>';
+    // Convert markdown to basic HTML for display
+    let displayText = p.raw_response
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+      .replace(/^## (.+)$/gm,'<div style="font-size:11px;letter-spacing:2px;color:#0033a0;text-transform:uppercase;margin:14px 0 6px 0;border-bottom:1px solid #d4c8b688;padding-bottom:4px;">$1</div>')
+      .replace(/^# (.+)$/gm,'<div style="font-size:12px;font-weight:600;letter-spacing:2px;color:#1f1b17;margin:10px 0 6px 0;">$1</div>')
+      .replace(/^\| (.+)$/gm,'<div style="font-size:10px;font-family:monospace;padding:2px 0;border-bottom:1px solid #d4c8b633;">| $1</div>')
+      .replace(/^(\d+)\. (.+)$/gm,'<div style="padding:3px 0 3px 14px;border-left:2px solid #0033a022;margin-bottom:4px;font-size:11px;"><strong>$1.</strong> $2</div>')
+      .replace(/
+/g,'<br>');
 
-    if(p.analysis_summary) {
-      html += '<div class="outcome-summary">'+p.analysis_summary+'</div>';
-    }
+    html += '<div class="resp-block" style="border-color:'+riskColor+'44;background:'+riskColor+'08;max-height:500px;overflow-y:auto;">';
+    html += '<div class="resp-src" style="color:#0033a0;margin-bottom:10px;">CLAUDE AI - BEDROCK ANALYSIS - HAVEN-1 AI MONITORING SPECIALIST</div>';
+    html += displayText;
+    html += '</div>';
 
-    html += '<div style="font-size:10px;letter-spacing:1px;color:#0033a0;margin-bottom:6px;text-transform:uppercase;">Recommendations</div>';
-    if(Array.isArray(p.recommendations) && p.recommendations.length > 0) {
-      html += '<ul class="rec-list">';
-      p.recommendations.forEach(r => { html += '<li>'+r+'</li>'; });
-      html += '</ul>';
-    }
-
-    html += '<div style="margin-top:10px;display:flex;gap:16px;flex-wrap:wrap;">';
+    // Decision summary bar
+    html += '<div style="margin-top:10px;padding:10px 14px;border:1px solid '+riskColor+'44;border-radius:6px;background:'+riskColor+'08;display:flex;gap:16px;flex-wrap:wrap;">';
+    html += '<div style="font-size:11px;">Risk Level: <strong style="color:'+riskColor+';">'+(p.risk_level||'UNKNOWN')+'</strong></div>';
     html += '<div style="font-size:11px;">Action Required: <strong style="color:'+actionColor+';">'+(p.action_required||'N/A')+'</strong></div>';
     html += '<div style="font-size:11px;">Notify Crew: <strong style="color:'+(p.notify_crew ? '#f85149' : '#3fb950')+';">'+(p.notify_crew ? 'YES' : 'NO')+'</strong></div>';
     html += '<div style="font-size:11px;">SAM Confidence: <strong>'+j.c+'%</strong></div>';
     html += '<div style="font-size:11px;">Criticality: <strong style="color:'+ccolor+';">'+clabel+'</strong></div>';
-    html += '</div>';
     html += '</div>';
 
   } else {
