@@ -115,7 +115,7 @@
         <span class="toggle-slider"></span>
       </label>
       <label for="comms-toggle" style="color:#463525;">Simulate Comms Loss</label>
-      <span style="font-size:10px;color:#7c705a;margin-left:4px;">— Bypasses Rekognition and Claude. SAM decides autonomously at &gt;=80% confidence.</span>
+      <span style="font-size:10px;color:#7c705a;margin-left:4px;">- Bypasses Rekognition and Claude. SAM decides autonomously at &gt;=80% confidence.</span>
     </div>
 
     <div class="form-grid">
@@ -169,7 +169,7 @@
     </div>
 
     <div class="field-group" style="margin-bottom:14px;">
-      <span class="field-label">SAM Error Label (demo override — model training in progress)</span>
+      <span class="field-label">SAM Error Label (demo override - model training in progress)</span>
       <select class="field-input" id="t-error">
         <option value="">-- Select error label --</option>
         <option value="stringing">stringing</option>
@@ -277,7 +277,7 @@
 
 <script>
 // ---------------------------------------------------------------
-// CONFIG — paste your Lambda Function URL here
+// CONFIG - paste your Lambda Function URL here
 // ---------------------------------------------------------------
 const BEDROCK_URL = 'https://a3rb7swog2.execute-api.us-west-2.amazonaws.com/analyze';
 
@@ -492,7 +492,7 @@ function buildRekResponse() {
 }
 
 // ---------------------------------------------------------------
-// MAIN PIPELINE — runs automatically after SAM
+// MAIN PIPELINE - runs automatically after SAM
 // ---------------------------------------------------------------
 function runSAM() {
   let part = document.getElementById('t-part').value.trim();
@@ -555,7 +555,7 @@ async function callBedrock(reportText) {
 
     let rawText = body.response || '';
 
-    // Extract compliance fields — try multiple patterns
+    // Extract compliance fields - try multiple patterns
     let action = 'MANUAL_REVIEW';
     let risk = 'UNKNOWN';
     let notify = true;
@@ -642,7 +642,7 @@ function goToOutcome(commsLost, errorMsg) {
   let html = '';
 
   if(commsLost) {
-    // COMMS LOST — SAM autonomous decision
+    // COMMS LOST - SAM autonomous decision
     let aboveThreshold = j.c >= 80;
     let statusColor = aboveThreshold ? '#f85149' : '#d29922';
     let statusLabel = aboveThreshold ? 'COMMS LOST - SAM AUTONOMOUS DECISION' : 'COMMS LOST - CONFIDENCE BELOW THRESHOLD';
@@ -650,7 +650,7 @@ function goToOutcome(commsLost, errorMsg) {
       ? 'Communication with ground systems lost. SAM confidence is '+j.c+'% (above 80% threshold). Autonomous decision issued. Crew notification sent.'
       : 'Communication with ground systems lost. SAM confidence is '+j.c+'% (below 80% threshold). Insufficient confidence for autonomous action. Crew notified to inspect manually.';
 
-    html += '<div class="comms-banner"><span>[ ! ] COMMS LOST — AUTONOMOUS MODE ACTIVE</span></div>';
+    html += '<div class="comms-banner"><span>[ ! ] COMMS LOST - AUTONOMOUS MODE ACTIVE</span></div>';
     html += '<div class="resp-block" style="border-color:'+statusColor+'44;background:'+statusColor+'08;">';
     html += '<div class="resp-src" style="color:'+statusColor+'">'+statusLabel+'</div>';
     html += '<div class="outcome-header" style="color:'+statusColor+';">'+( aboveThreshold ? (j.e === 'none' ? 'CONTINUE PRINT' : 'PAUSE AND INSPECT') : 'MANUAL REVIEW REQUIRED' )+'</div>';
@@ -660,12 +660,12 @@ function goToOutcome(commsLost, errorMsg) {
     html += '</div>';
 
   } else if(errorMsg) {
-    // BEDROCK ERROR — fall back to SAM disposition
+    // BEDROCK ERROR - fall back to SAM disposition
     html += '<div class="err-block">Bedrock connection error: '+errorMsg+'<br><span style="font-size:10px;opacity:0.7;">Falling back to SAM disposition.</span></div>';
     html += renderSAMDisposition(j, clabel, ccolor);
 
   } else if(state.claudeParsed) {
-    // FULL PIPELINE — show Claude raw markdown response + decision fields
+    // FULL PIPELINE - show Claude raw markdown response + decision fields
     let p = state.claudeParsed;
     let riskColor   = p.risk_level === 'HIGH' ? '#f85149' : p.risk_level === 'MEDIUM' ? '#d29922' : '#3fb950';
     let actionColor = (p.action_required === 'NONE') ? '#3fb950' : '#f85149';
