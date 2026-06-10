@@ -457,19 +457,8 @@ function formatReport(includeRek, rekContent) {
   lines.push('  4. Provide specific, actionable corrective recommendations.');
   lines.push('  5. State clearly whether crew approval is required.');
   lines.push('');
-  lines.push('  Respond ONLY with valid JSON using exactly these fields:');
-  lines.push('  {');
-  lines.push('    "print_id": "HAVEN1-'+new Date().toISOString().substring(0,10).replace(/-/g,'')+'-XXX",');
-  lines.push('    "layer": '+layer+',');
-  lines.push('    "detected_defect": "'+defect+'",');
-  lines.push('    "model_confidence": '+modelConf+',');
-  lines.push('    "risk_level": "LOW|MEDIUM|HIGH",');
-  lines.push('    "analysis_summary": "...",');
-  lines.push('    "recommendations": ["rec1", "rec2", "rec3"],');
-  lines.push('    "action_required": "NONE|PAUSE_AND_INSPECT|CREW_APPROVAL|ABORT",');
-  lines.push('    "notify_crew": true|false,');
-  lines.push('    "timestamp": "'+new Date().toISOString()+'"');
-  lines.push('  }');
+  lines.push('  Provide your full sectioned analysis per your standing instructions.');
+  lines.push('  End with the compliance log section with action_required, risk_level, notify_crew, detected_defect.');
   lines.push('');
   lines.push('==================================================');
   lines.push('  END OF SAM REPORT');
@@ -665,8 +654,7 @@ function goToOutcome(commsLost, errorMsg) {
       .replace(/^# (.+)$/gm,'<div style="font-size:12px;font-weight:600;letter-spacing:2px;color:#1f1b17;margin:10px 0 6px 0;">$1</div>')
       .replace(/^\| (.+)$/gm,'<div style="font-size:10px;font-family:monospace;padding:2px 0;border-bottom:1px solid #d4c8b633;">| $1</div>')
       .replace(/^(\d+)\. (.+)$/gm,'<div style="padding:3px 0 3px 14px;border-left:2px solid #0033a022;margin-bottom:4px;font-size:11px;"><strong>$1.</strong> $2</div>')
-      .replace(/
-/g,'<br>');
+      .replace(/\n/g,'<br>');
 
     html += '<div class="resp-block" style="border-color:'+riskColor+'44;background:'+riskColor+'08;max-height:500px;overflow-y:auto;">';
     html += '<div class="resp-src" style="color:#0033a0;margin-bottom:10px;">CLAUDE AI - BEDROCK ANALYSIS - HAVEN-1 AI MONITORING SPECIALIST</div>';
