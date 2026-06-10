@@ -1,3 +1,11 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SAM - PMSAMM | Haven-1</title>
+</head>
+<body>
 
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -575,11 +583,8 @@ async function callBedrock(reportText) {
     else notify = (action !== 'NONE');
 
     // Try to find detected_defect
-    let dm = rawText.match(/detected.defect[^
-:]+[:]\s*([^
-]+)/i);
-    if(!dm) dm = rawText.match(/detected.defect\s*[:\-]\s*([^
-]+)/i);
+    let dm = rawText.match(/detected.defect[^\n:]+[:]\s*([^\n]+)/i);
+    if(!dm) dm = rawText.match(/detected.defect\s*[:\-]\s*([^\n]+)/i);
     if(dm) defect = dm[1].trim();
 
     // Safety rules
@@ -764,3 +769,6 @@ function resetAll() {
   goStage(0);
 }
 </script>
+
+</body>
+</html>
