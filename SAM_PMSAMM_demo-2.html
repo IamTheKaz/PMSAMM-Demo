@@ -23,8 +23,8 @@
   .stage-tab.active { color: #0033a0; border-bottom-color: #0033a0; }
   .stage-tab.done { color: #0059b3; }
   .stage-tab.disabled { opacity: 0.5; pointer-events: none; }
-  .content { padding: 20px; }
-  .section-header { font-size: 10px; letter-spacing: 2px; color: #463525; text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid #d4c8b6; padding-bottom: 6px; }
+  .content { padding: 12px 16px; }
+  .section-header { font-size: 10px; letter-spacing: 2px; color: #463525; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #d4c8b6; padding-bottom: 4px; }
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
   .field-group { display: flex; flex-direction: column; gap: 4px; }
   .field-label { font-size: 10px; letter-spacing: 1px; color: #463525; text-transform: uppercase; }
@@ -56,7 +56,7 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .await-block { border: 1px solid #d4c8b6; background: #f7ede0; border-radius: 6px; padding: 14px 16px; font-size: 11px; color: #7c5c3d; margin-bottom: 14px; }
   .await-block.comms { border-color: #f8514944; background: #f8514911; color: #f85149; }
-  .resp-block { border: 1px solid #0033a044; background: #edf3ff; border-radius: 6px; padding: 14px 16px; font-size: 11px; color: #1f1b17; line-height: 1.7; margin-bottom: 14px; }
+  .resp-block { border: 1px solid #0033a044; background: #edf3ff; border-radius: 6px; padding: 10px 12px; font-size: 11px; color: #1f1b17; line-height: 1.5; margin-bottom: 8px; }
   .resp-block .resp-src { font-size: 10px; letter-spacing: 1px; color: #0033a0; margin-bottom: 8px; }
   .err-block { border: 1px solid #c32a2a44; background: #ffe7e7; border-radius: 6px; padding: 14px 16px; font-size: 11px; color: #8b1e1e; margin-bottom: 14px; }
   .tag { font-size: 9px; letter-spacing: 1px; padding: 2px 6px; border-radius: 3px; display: inline-block; margin-right: 4px; vertical-align: middle; }
@@ -306,8 +306,16 @@ let state = {
   fullReport: null,
   claudeParsed: null,
   commsLost: false,
-  currentStage: 0
+  currentStage: 0,
+  jobId: null
 };
+
+function generateJobId() {
+  let part = (document.getElementById('t-part').value || 'UNKNOWN').replace(/[^a-zA-Z0-9]/g,'-').substring(0,12).toUpperCase();
+  let crew = (document.getElementById('t-crew').value || 'CREW').replace(/[^a-zA-Z0-9]/g,'').substring(0,8).toUpperCase();
+  let ts = new Date().toISOString().substring(0,10).replace(/-/g,'');
+  return 'HAVEN1-'+part+'-'+crew+'-'+ts;
+}
 
 // ---------------------------------------------------------------
 // COMMS TOGGLE
@@ -523,6 +531,12 @@ function runSAM() {
   let selectedError = document.getElementById('t-error').value;
   state.samJudgment = selectedError ? getManualSAMJudgment(selectedError) : getSAMJudgment();
 
+  // Generate job_id once per print job
+  if(!state.jobId) state.jobId = generateJobId();
+
+  // Log SAM run
+  logSAMRun();
+
   if(state.commsLost) {
     runCommsLostPath();
   } else {
@@ -718,13 +732,15 @@ function goToOutcome(commsLost, errorMsg) {
     let displayText = p.raw_response
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
       .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
-      .replace(/^## (.+)$/gm,'<div style="font-size:11px;letter-spacing:2px;color:#0033a0;text-transform:uppercase;margin:14px 0 6px 0;border-bottom:1px solid #d4c8b688;padding-bottom:4px;">$1</div>')
-      .replace(/^# (.+)$/gm,'<div style="font-size:12px;font-weight:600;letter-spacing:2px;color:#1f1b17;margin:10px 0 6px 0;">$1</div>')
-      .replace(/^\| (.+)$/gm,'<div style="font-size:10px;font-family:monospace;padding:2px 0;border-bottom:1px solid #d4c8b633;">| $1</div>')
-      .replace(/^(\d+)\. (.+)$/gm,'<div style="padding:3px 0 3px 14px;border-left:2px solid #0033a022;margin-bottom:4px;font-size:11px;"><strong>$1.</strong> $2</div>')
-      .replace(/\n/g,'<br>');
+      .replace(/^## (.+)$/gm,'<div style="font-size:10px;letter-spacing:2px;color:#0033a0;text-transform:uppercase;margin:8px 0 3px 0;border-bottom:1px solid #d4c8b688;padding-bottom:2px;">$1</div>')
+      .replace(/^# (.+)$/gm,'<div style="font-size:11px;font-weight:600;letter-spacing:1px;color:#1f1b17;margin:6px 0 3px 0;">$1</div>')
+      .replace(/^\| (.+)$/gm,'<div style="font-size:10px;font-family:monospace;padding:1px 0;border-bottom:1px solid #d4c8b633;">| $1</div>')
+      .replace(/^(\d+)\. (.+)$/gm,'<div style="padding:2px 0 2px 12px;border-left:2px solid #0033a022;margin-bottom:2px;font-size:11px;"><strong>$1.</strong> $2</div>')
+      .replace(/---/g,'<hr style="border:none;border-top:1px solid #d4c8b644;margin:4px 0;">')
+      .replace(/\n\n/g,'<br>')
+      .replace(/\n/g,' ');
 
-    html += '<div class="resp-block" style="border-color:'+riskColor+'44;background:'+riskColor+'08;max-height:500px;overflow-y:auto;">';
+    html += '<div class="resp-block" style="border-color:'+riskColor+'44;background:'+riskColor+'08;max-height:420px;overflow-y:auto;">';
     html += '<div class="resp-src" style="color:#0033a0;margin-bottom:10px;">CLAUDE AI - BEDROCK ANALYSIS - HAVEN-1 AI MONITORING SPECIALIST</div>';
     html += displayText;
     html += '</div>';
