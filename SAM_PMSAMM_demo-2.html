@@ -534,9 +534,6 @@ function runSAM() {
   // Generate job_id once per print job
   if(!state.jobId) state.jobId = generateJobId();
 
-  // Log SAM run
-  logSAMRun();
-
   if(state.commsLost) {
     runCommsLostPath();
   } else {
