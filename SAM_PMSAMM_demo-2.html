@@ -286,8 +286,9 @@
     <div class="section-header">SAM - Final Disposition</div>
     <div class="flow-row" id="flow-outcome"></div>
     <div id="outcome-content"></div>
-    <div style="margin-top:16px;display:flex;gap:10px;">
-      <button class="action-btn green" onclick="resetAll()">* New Monitoring Session</button>
+    <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="action-btn green" onclick="continuePrint()">* Continue Monitoring This Print</button>
+      <button class="action-btn red" onclick="resetAll()">* New Monitoring Session</button>
     </div>
   </div>
 </div>
@@ -567,7 +568,21 @@ function runFullPipeline() {
 // ---------------------------------------------------------------
 async function callBedrock(reportText) {
   try {
-    let payload = { report: reportText };
+    // Ensure job_id persists across runs in same session
+    if(!state.jobId) state.jobId = generateJobId();
+
+    let payload = {
+      report:  reportText,
+      job_id:  state.jobId,
+      meta: {
+        crew_member:      document.getElementById('t-crew').value || '',
+        part_description: document.getElementById('t-part').value || '',
+        criticality:      state.crit,
+        print_progress:   document.getElementById('t-prog').value || '0',
+        sam_confidence:   state.samJudgment ? state.samJudgment.c : 0,
+        sam_label:        state.samJudgment ? state.samJudgment.e : ''
+      }
+    };
     if(state.imgDataUrl) {
       payload.image = state.imgDataUrl;
       payload.imageType = state.imgDataUrl.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
@@ -650,11 +665,11 @@ function runEndOfPrint() {
   state.samJudgment = {j:'Print complete. Final layer reached.', e:'none', c:99};
   let rekContent = 'END OF PRINT - Final frame analysis requested.';
   let fullReport = formatReport(true, rekContent);
-  // Restore progress
   document.getElementById('t-prog').value = origProg;
   state.fullReport = fullReport;
+  // Keep same job_id for end of print, then clear after
   goStage(3);
-  callBedrock(fullReport);
+  callBedrock(fullReport).then(() => { state.jobId = null; });
 }
 
 // ---------------------------------------------------------------
@@ -821,13 +836,38 @@ function goStage(n) {
 }
 
 // ---------------------------------------------------------------
+// CONTINUE SAME PRINT JOB
+// ---------------------------------------------------------------
+function continuePrint() {
+  // Keep job_id, image, telemetry — just go back to stage 0
+  let keepImg    = state.imgDataUrl;
+  let keepName   = state.imgName;
+  let keepJobId  = state.jobId;
+  let keepCrit   = state.crit;
+  state = {
+    crit:         keepCrit,
+    imgDataUrl:   keepImg,
+    imgName:      keepName,
+    samJudgment:  null,
+    fullReport:   null,
+    claudeParsed: null,
+    commsLost:    document.getElementById('comms-toggle').checked,
+    currentStage: 0,
+    jobId:        keepJobId
+  };
+  document.getElementById('t-part').style.borderColor = '';
+  setCrit(keepCrit);
+  goStage(0);
+}
+
+// ---------------------------------------------------------------
 // RESET
 // ---------------------------------------------------------------
 function resetAll() {
   // Keep image across sessions so user doesn't need to re-upload
   let keepImg = state.imgDataUrl;
   let keepName = state.imgName;
-  state = { crit: 3, imgDataUrl: keepImg, imgName: keepName, samJudgment: null, fullReport: null, claudeParsed: null, commsLost: document.getElementById('comms-toggle').checked, currentStage: 0 };
+  state = { crit: 3, imgDataUrl: keepImg, imgName: keepName, samJudgment: null, fullReport: null, claudeParsed: null, commsLost: document.getElementById('comms-toggle').checked, currentStage: 0, jobId: null };
   document.getElementById('t-part').value = '';
   document.getElementById('t-part').style.borderColor = '';
   // Reset file input so same file can be selected again
