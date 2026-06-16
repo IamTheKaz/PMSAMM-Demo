@@ -676,14 +676,22 @@ async function callBedrock(reportText) {
 
     if(action === 'MANUAL_REVIEW' || action === 'CREW_APPROVAL' || action === 'ABORT') notify = true;
 
+    // Extract telemetry adjustments from Lambda response
+    let telemetryAdj = {};
+    try {
+      let respBody = typeof data.body === 'string' ? JSON.parse(data.body) : data;
+      if(respBody.telemetry_adjustments) telemetryAdj = respBody.telemetry_adjustments;
+    } catch(e) {}
+
     state.claudeParsed = {
-      raw_response:           rawText,
-      action_required:        action,
-      risk_level:             risk,
-      notify_crew:            notify,
-      detected_defect:        defect,
-      crew_message:           crewMsg,
-      autonomous_corrections: autoCorrections
+      raw_response:            rawText,
+      action_required:         action,
+      risk_level:              risk,
+      notify_crew:             notify,
+      detected_defect:         defect,
+      crew_message:            crewMsg,
+      autonomous_corrections:  autoCorrections,
+      telemetry_adjustments:   telemetryAdj
     };
 
     goToOutcome(false);
@@ -885,11 +893,20 @@ function goStage(n) {
 // CONTINUE SAME PRINT JOB
 // ---------------------------------------------------------------
 function continuePrint() {
-  // Keep job_id, image, telemetry — just go back to stage 0
-  let keepImg    = state.imgDataUrl;
-  let keepName   = state.imgName;
-  let keepJobId  = state.jobId;
-  let keepCrit   = state.crit;
+  // Apply autonomous telemetry adjustments before returning to stage 0
+  if(state.claudeParsed && state.claudeParsed.telemetry_adjustments) {
+    let adj = state.claudeParsed.telemetry_adjustments;
+    if(adj.nozzle     !== undefined) document.getElementById('t-nozzle').value  = adj.nozzle;
+    if(adj.bed        !== undefined) document.getElementById('t-bed').value      = adj.bed;
+    if(adj.speed      !== undefined) document.getElementById('t-speed').value    = adj.speed;
+    if(adj.retraction !== undefined) document.getElementById('t-retract').value  = adj.retraction;
+    if(adj.extrude    !== undefined) document.getElementById('t-extrude').value  = adj.extrude;
+    if(adj.layer      !== undefined) document.getElementById('t-layer').value    = adj.layer;
+  }
+  let keepImg   = state.imgDataUrl;
+  let keepName  = state.imgName;
+  let keepJobId = state.jobId;
+  let keepCrit  = state.crit;
   state = {
     crit:         keepCrit,
     imgDataUrl:   keepImg,
@@ -902,6 +919,7 @@ function continuePrint() {
     jobId:        keepJobId
   };
   document.getElementById('t-part').style.borderColor = '';
+  document.getElementById('t-error').value = '';  // always clear override on continue
   setCrit(keepCrit);
   goStage(0);
 }
