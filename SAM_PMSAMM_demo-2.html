@@ -131,7 +131,7 @@
         <span class="toggle-slider"></span>
       </label>
       <label for="sam-only-toggle" style="color:#463525;">Force SAM-only final decision</label>
-      <span style="font-size:10px;color:#7c705a;margin-left:4px;">- Use SAM prediction only; skip Claude override for final outcome.</span>
+      <span style="font-size:10px;color:#7c705a;margin-left:4px;">- Force the system to stop at SAM and skip Claude entirely. High-confidence SAM predictions are already preserved automatically.</span>
     </div>
 
     <div class="form-grid">
@@ -354,12 +354,51 @@ function runSamOnlyPath() {
   goToOutcome(false);
 }
 
+function renderSAMSummary() {
+  if(!state.samJudgment) return '';
+  return '<div class="resp-block" style="border-color:#0033a044;background:#edf3ff;">' +
+         '<div class="resp-src" style="color:#0033a0">RECORDED SAM PREDICTION</div>' +
+         '<div class="outcome-summary">SAM predicted <strong>' + String(state.samJudgment.e).toUpperCase() + '</strong> at <strong>' + state.samJudgment.c + '%</strong> confidence.</div>' +
+         '</div><br>';
+}
+
+function samAndClaudeAgree() {
+  if(!state.claudeParsed || !state.samJudgment) return false;
+  let samLabel = String(state.samJudgment.e || '').trim().toLowerCase();
+  let claudeLabel = String(state.claudeParsed.detected_defect || '').trim().toLowerCase();
+  return samLabel && claudeLabel && samLabel === claudeLabel;
+}
+
+function renderSamClaudeComparison() {
+  if(!state.claudeParsed || !state.samJudgment) return '';
+  let samLabel = String(state.samJudgment.e || 'UNKNOWN').trim().toUpperCase();
+  let claudeLabel = String(state.claudeParsed.detected_defect || 'UNKNOWN').trim().toUpperCase();
+  let html = '<div class="resp-block" style="border-color:#0033a044;background:#edf3ff;">';
+  html += '<div class="resp-src" style="color:#0033a0">SAM vs CLAUDE</div>';
+  html += '<div class="outcome-summary">Recorded SAM prediction: <strong>' + samLabel + '</strong> at <strong>' + state.samJudgment.c + '%</strong> confidence.<br>';
+  html += 'Claude parsed defect: <strong>' + claudeLabel + '</strong>.</div>';
+  if(samLabel === claudeLabel) {
+    html += '<div style="font-size:11px;color:#3fb950;margin-top:6px;">SAM and Claude agree on the defect label.</div>';
+  } else {
+    html += '<div style="font-size:11px;color:#f85149;margin-top:6px;">SAM and Claude do not agree on the defect label.</div>';
+  }
+  html += '</div><br>';
+  return html;
+}
+
 function shouldPreserveSamDecision() {
   if(!state.claudeParsed || !state.samJudgment) return false;
   let samLabel = String(state.samJudgment.e || '').trim().toLowerCase();
   let claudeLabel = String(state.claudeParsed.detected_defect || '').trim().toLowerCase();
   if(!samLabel || !claudeLabel) return false;
   return state.samJudgment.c >= SAM_PRECEDENCE_THRESHOLD && samLabel !== claudeLabel;
+}
+
+function renderDecisionSource(source) {
+  return '<div class="resp-block" style="border-color:#64748b44;background:#f8fafc;">' +
+         '<div class="resp-src" style="color:#334155">FINAL DECISION SOURCE</div>' +
+         '<div class="outcome-summary">' + source + '</div>' +
+         '</div><br>';
 }
 
 // ---------------------------------------------------------------
@@ -812,6 +851,7 @@ function goToOutcome(commsLost, errorMsg) {
     html += '<div style="font-size:11px;color:#7c705a;margin-top:8px;">SAM Error Label: <strong>'+j.e.toUpperCase()+'</strong> &nbsp;|&nbsp; Confidence: <strong>'+j.c+'%</strong> &nbsp;|&nbsp; Criticality: <strong>'+clabel+'</strong></div>';
     html += '<div style="font-size:11px;color:'+statusColor+';margin-top:8px;">Crew notification: <strong>SENT</strong></div>';
     html += '</div>';
+    html += renderDecisionSource('SAM - no Claude decision available (fallback)');
 
   } else if(errorMsg) {
     // BEDROCK ERROR - fall back to SAM disposition
@@ -819,10 +859,20 @@ function goToOutcome(commsLost, errorMsg) {
     html += renderSAMDisposition(j, clabel, ccolor);
 
   } else if(state.claudeParsed) {
+    html += renderSAMSummary();
+    html += renderSamClaudeComparison();
+    if(samAndClaudeAgree()) {
+      html += '<div class="resp-block" style="border-color:#3fb95044;background:#def4e0;">';
+      html += '<div class="resp-src" style="color:#3fb950">SAM + Claude agree</div>';
+      html += '<div class="outcome-summary">Claude confirms the same defect as SAM. Final disposition follows the shared prediction.</div>';
+      html += '</div><br>';
+    }
     if(shouldPreserveSamDecision()) {
-      html += '<div class="err-block">Claude disagreed with high-confidence SAM. Final disposition retains the SAM prediction at '+state.samJudgment.c+'% confidence.</div>';
+      html += '<div class="err-block">Claude disagreed with a high-confidence SAM prediction, but the recorded SAM result is preserved because SAM confidence is '+state.samJudgment.c+'%.</div>';
+      html += renderDecisionSource('SAM - preserved over Claude due to high confidence and disagreement');
       html += renderSAMDisposition(j, clabel, ccolor);
     } else {
+      html += renderDecisionSource('Claude - final structured defect used');
       // FULL PIPELINE - show Claude raw markdown response + decision fields
       let p = state.claudeParsed;
       let riskColor   = p.risk_level === 'HIGH' ? '#f85149' : p.risk_level === 'MEDIUM' ? '#d29922' : '#3fb950';
