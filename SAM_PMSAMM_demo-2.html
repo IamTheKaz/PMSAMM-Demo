@@ -298,6 +298,7 @@
 // CONFIG - paste your Lambda Function URL here
 // ---------------------------------------------------------------
 const BEDROCK_URL = 'https://a3rb7swog2.execute-api.us-west-2.amazonaws.com/analyze';
+const SAM_URL = 'https://wtcqbp7rmnoy3pf7hty2bcyoea0dcese.lambda-url.us-west-2.on.aws/';
 
 let state = {
   crit: 3,
@@ -522,23 +523,58 @@ function buildRekResponse() {
 // ---------------------------------------------------------------
 // MAIN PIPELINE - runs automatically after SAM
 // ---------------------------------------------------------------
-function runSAM() {
+async function runSAM() {
   let part = document.getElementById('t-part').value.trim();
   if(!part) {
     document.getElementById('t-part').focus();
     document.getElementById('t-part').style.borderColor='#f85149';
     return;
   }
-  let selectedError = document.getElementById('t-error').value;
-  state.samJudgment = selectedError ? getManualSAMJudgment(selectedError) : getSAMJudgment();
 
   // Generate job_id once per print job
   if(!state.jobId) state.jobId = generateJobId();
 
-  if(state.commsLost) {
-    runCommsLostPath();
+  let selectedError = document.getElementById('t-error').value;
+
+  // If image is loaded and no manual override, use real SAM inference
+  if(state.imgDataUrl && !selectedError) {
+    goStage(1);
+    try {
+      let samResp = await fetch(SAM_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: state.imgDataUrl })
+      });
+      let samData = await samResp.json();
+      let body = typeof samData.body === 'string' ? JSON.parse(samData.body) : samData;
+      if(body.label) {
+        // Real SAM result
+        state.samJudgment = {
+          j: 'SAM inference: ' + body.label.toUpperCase() + ' detected. Confidence: ' + body.confidence + '%. Raw scores: ' + JSON.stringify(body.raw_scores),
+          e: body.label,
+          c: Math.round(body.confidence)
+        };
+        // Show raw scores in SAM stage
+        document.getElementById('sam-processing').innerHTML =
+          '<strong>SAM REAL INFERENCE RESULT</strong><br>' +
+          'Label: <strong>' + body.label.toUpperCase() + '</strong> | Confidence: <strong>' + body.confidence + '%</strong><br>' +
+          'Raw scores: ' + Object.entries(body.raw_scores).map(([k,v]) => k+': '+v+'%').join(' | ');
+      } else {
+        state.samJudgment = getSAMJudgment();
+      }
+    } catch(err) {
+      console.log('SAM inference failed, using simulation:', err);
+      state.samJudgment = getSAMJudgment();
+    }
+    setTimeout(() => {
+      if(state.commsLost) { runCommsLostPath(); }
+      else { runFullPipelineFromStage2(); }
+    }, 1500);
   } else {
-    runFullPipeline();
+    // Manual override or no image - use simulator
+    state.samJudgment = selectedError ? getManualSAMJudgment(selectedError) : getSAMJudgment();
+    if(state.commsLost) { runCommsLostPath(); }
+    else { runFullPipeline(); }
   }
 }
 
@@ -547,20 +583,30 @@ function runSAM() {
 // ---------------------------------------------------------------
 function runFullPipeline() {
   goStage(1);
-  // Stage 1 - SAM (brief pause then auto-advance)
   setTimeout(() => {
     goStage(2);
-    // Stage 2 - Rekognition sim
     setTimeout(() => {
       let rekContent = buildRekResponse();
       state.rekContent = rekContent;
       let fullReport = formatReport(true, rekContent);
       state.fullReport = fullReport;
       goStage(3);
-      // Stage 3 - Bedrock call
       callBedrock(fullReport);
     }, 1800);
   }, 900);
+}
+
+// Used when SAM real inference already ran and we're on stage 1
+function runFullPipelineFromStage2() {
+  goStage(2);
+  setTimeout(() => {
+    let rekContent = buildRekResponse();
+    state.rekContent = rekContent;
+    let fullReport = formatReport(true, rekContent);
+    state.fullReport = fullReport;
+    goStage(3);
+    callBedrock(fullReport);
+  }, 1800);
 }
 
 // ---------------------------------------------------------------
