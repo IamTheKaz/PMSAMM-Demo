@@ -116,24 +116,6 @@
   <div class="content" id="stage-0">
     <div class="section-header">Telemetry Input - Active Session</div>
 
-    <!-- COMMS TOGGLE -->
-    <div class="comms-toggle-row">
-      <label class="toggle-switch">
-        <input type="checkbox" id="comms-toggle" onchange="toggleComms()">
-        <span class="toggle-slider"></span>
-      </label>
-      <label for="comms-toggle" style="color:#463525;">Simulate Comms Loss</label>
-      <span style="font-size:10px;color:#7c705a;margin-left:4px;">- Bypasses Rekognition and Claude. SAM decides autonomously at &gt;=80% confidence.</span>
-    </div>
-    <div class="comms-toggle-row" style="margin-top:8px;">
-      <label class="toggle-switch">
-        <input type="checkbox" id="sam-only-toggle" onchange="toggleSamOnly()">
-        <span class="toggle-slider"></span>
-      </label>
-      <label for="sam-only-toggle" style="color:#463525;">Force SAM-only final decision</label>
-      <span style="font-size:10px;color:#7c705a;margin-left:4px;">- Force the system to stop at SAM and skip Claude entirely. High-confidence SAM predictions are already preserved automatically.</span>
-    </div>
-
     <div class="form-grid">
       <div class="field-group">
         <span class="field-label">Nozzle Temp (C)</span>
@@ -316,10 +298,8 @@ let state = {
   samJudgment: null,
   fullReport: null,
   claudeParsed: null,
-  commsLost: false,
   currentStage: 0,
-  jobId: null,
-  samOnly: false
+  jobId: null
 };
 
 function generateJobId() {
@@ -330,30 +310,6 @@ function generateJobId() {
 }
 
 // ---------------------------------------------------------------
-// COMMS TOGGLE
-// ---------------------------------------------------------------
-function toggleComms() {
-  state.commsLost = document.getElementById('comms-toggle').checked;
-  let dot = document.getElementById('status-dot');
-  if(state.commsLost) {
-    dot.classList.add('comms-lost');
-    dot.title = 'COMMS LOST - Autonomous mode';
-  } else {
-    dot.classList.remove('comms-lost');
-    dot.title = 'System nominal';
-  }
-}
-
-function toggleSamOnly() {
-  state.samOnly = document.getElementById('sam-only-toggle').checked;
-}
-
-function runSamOnlyPath() {
-  state.claudeParsed = null;
-  goStage(4);
-  goToOutcome(false);
-}
-
 function renderSAMSummary() {
   if(!state.samJudgment) return '';
   return '<div class="resp-block" style="border-color:#0033a044;background:#edf3ff;">' +
@@ -634,16 +590,12 @@ async function runSAM() {
       state.samJudgment = getSAMJudgment();
     }
     setTimeout(() => {
-      if(state.samOnly) { runSamOnlyPath(); }
-      else if(state.commsLost) { runCommsLostPath(); }
-      else { runFullPipelineFromStage2(); }
+      goToOutcome(false);
     }, 1500);
   } else {
     // Manual override or no image - use simulator
     state.samJudgment = selectedError ? getManualSAMJudgment(selectedError) : getSAMJudgment();
-    if(state.samOnly) { runSamOnlyPath(); }
-    else if(state.commsLost) { runCommsLostPath(); }
-    else { runFullPipeline(); }
+    goToOutcome(false);
   }
 }
 
@@ -793,16 +745,6 @@ function runEndOfPrint() {
   // Keep same job_id for end of print, then clear after
   goStage(3);
   callBedrock(fullReport).then(() => { state.jobId = null; });
-}
-
-// ---------------------------------------------------------------
-// COMMS LOST PATH (SAM only, no Rekognition or Claude)
-// ---------------------------------------------------------------
-function runCommsLostPath() {
-  goStage(1);
-  setTimeout(() => {
-    goToOutcome(true);
-  }, 1200);
 }
 
 // ---------------------------------------------------------------
@@ -998,7 +940,6 @@ function continuePrint() {
     samJudgment:  null,
     fullReport:   null,
     claudeParsed: null,
-    commsLost:    document.getElementById('comms-toggle').checked,
     currentStage: 0,
     jobId:        keepJobId
   };
@@ -1015,7 +956,7 @@ function resetAll() {
   // Keep image across sessions so user doesn't need to re-upload
   let keepImg = state.imgDataUrl;
   let keepName = state.imgName;
-  state = { crit: 3, imgDataUrl: keepImg, imgName: keepName, samJudgment: null, fullReport: null, claudeParsed: null, commsLost: document.getElementById('comms-toggle').checked, currentStage: 0, jobId: null };
+  state = { crit: 3, imgDataUrl: keepImg, imgName: keepName, samJudgment: null, fullReport: null, claudeParsed: null, currentStage: 0, jobId: null };
   document.getElementById('t-part').value = '';
   document.getElementById('t-part').style.borderColor = '';
   // Reset file input so same file can be selected again
