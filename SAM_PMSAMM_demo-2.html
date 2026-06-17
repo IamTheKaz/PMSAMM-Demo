@@ -590,12 +590,14 @@ async function runSAM() {
       state.samJudgment = getSAMJudgment();
     }
     setTimeout(() => {
-      goToOutcome(false);
+      if(state.commsLost) { runCommsLostPath(); }
+      else { runFullPipelineFromStage2(); }
     }, 1500);
   } else {
     // Manual override or no image - use simulator
     state.samJudgment = selectedError ? getManualSAMJudgment(selectedError) : getSAMJudgment();
-    goToOutcome(false);
+    if(state.commsLost) { runCommsLostPath(); }
+    else { runFullPipeline(); }
   }
 }
 
