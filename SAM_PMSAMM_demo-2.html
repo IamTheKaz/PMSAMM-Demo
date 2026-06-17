@@ -577,6 +577,7 @@ async function runSAM() {
           e: body.label,
           c: Math.round(body.confidence)
         };
+        console.log('SAM SET:', JSON.stringify(state.samJudgment));
         // Show raw scores in SAM stage
         document.getElementById('sam-processing').innerHTML =
           '<strong>SAM REAL INFERENCE RESULT</strong><br>' +
@@ -623,6 +624,7 @@ function runFullPipeline() {
 function runFullPipelineFromStage2() {
   goStage(2);
   setTimeout(() => {
+    console.log('BEFORE FORMAT:', JSON.stringify(state.samJudgment));
     let rekContent = buildRekResponse();
     state.rekContent = rekContent;
     let fullReport = formatReport(true, rekContent);
