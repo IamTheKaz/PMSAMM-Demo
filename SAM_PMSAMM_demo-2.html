@@ -72,7 +72,7 @@
   .flow-arrow { color: #7c705a; font-size: 12px; }
   .confidence-bar { background: #e4dcd1; border-radius: 2px; height: 6px; margin: 4px 0; overflow: hidden; }
   .confidence-fill { height: 100%; border-radius: 2px; transition: width 0.6s; }
-  .hidden { display: none; }
+  .hidden { display: none !important; }
   #file-input { display: none; }
   .comms-banner { background: #f8514911; border: 1px solid #f8514944; border-radius: 4px; padding: 8px 14px; font-size: 10px; color: #f85149; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
   .comms-toggle-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 10px 14px; border: 1px solid #d4c8b6; border-radius: 6px; background: #f7f3ea; }
@@ -89,6 +89,20 @@
   .rec-list li { font-size: 11px; color: #1f1b17; padding: 4px 0 4px 14px; border-left: 2px solid #0033a022; margin-bottom: 4px; line-height: 1.5; }
   .info-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; flex-wrap: wrap; }
   .info-pill { font-size: 10px; padding: 3px 8px; border-radius: 3px; background: #f7f0e4; color: #463525; border: 1px solid #d4c8b6; }
+  .crew-modal-backdrop { position: fixed; inset: 0; background: rgba(18, 16, 13, 0.62); display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 999; }
+  .crew-modal { width: min(760px, 100%); max-height: 90vh; overflow-y: auto; background: #fbf7ef; border: 1px solid #d4c8b6; border-radius: 10px; box-shadow: 0 18px 40px rgba(42, 32, 21, 0.22); padding: 18px; }
+  .crew-modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .crew-modal-title { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #0033a0; }
+  .crew-modal-subtitle { font-size: 11px; color: #5b4737; line-height: 1.6; margin-top: 6px; }
+  .crew-modal-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 14px; }
+  .crew-modal-pane { border: 1px solid #d4c8b6; border-radius: 8px; background: #fff8ef; padding: 12px; }
+  .crew-modal-pane img { width: 100%; border-radius: 6px; border: 1px solid #d4c8b6; background: #fff; }
+  .crew-modal-meta { font-size: 10px; color: #6e6253; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+  .crew-modal-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .crew-response-log { margin-top: 12px; padding: 10px 12px; border-radius: 6px; background: #edf3ff; border: 1px solid #0033a044; font-size: 11px; color: #1f1b17; }
+  @media (max-width: 760px) {
+    .crew-modal-grid { grid-template-columns: 1fr; }
+  }
 </style>
 
 <div class="sam-shell">
@@ -170,6 +184,14 @@
         <span class="field-label">Crew Member Name</span>
         <input class="field-input" id="t-crew" type="text" placeholder="e.g. Commander Harris...">
       </div>
+    </div>
+
+    <div class="comms-toggle-row">
+      <label class="toggle-switch" for="comms-toggle">
+        <input type="checkbox" id="comms-toggle" onchange="setCommsLost(this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+      <label for="comms-toggle">Simulate comms blackout</label>
     </div>
 
     <div class="field-group" style="margin-bottom:14px;">
@@ -283,23 +305,52 @@
   </div>
 </div>
 
+<div class="crew-modal-backdrop hidden" id="crew-modal-backdrop">
+  <div class="crew-modal">
+    <div class="crew-modal-head">
+      <div>
+        <div class="crew-modal-title" id="crew-modal-title">Crew Device Notification</div>
+        <div class="crew-modal-subtitle" id="crew-modal-subtitle"></div>
+      </div>
+      <button class="action-btn green" type="button" onclick="closeCrewModal()">Dismiss</button>
+    </div>
+    <div class="crew-modal-grid">
+      <div class="crew-modal-pane">
+        <div class="crew-modal-meta">Attached frame capture</div>
+        <div id="crew-modal-image-wrap"></div>
+      </div>
+      <div class="crew-modal-pane">
+        <div class="crew-modal-meta">Crew review packet</div>
+        <div id="crew-modal-body" style="font-size:11px;line-height:1.7;color:#1f1b17;"></div>
+        <div class="crew-modal-actions" id="crew-modal-actions"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // ---------------------------------------------------------------
 // CONFIG - paste your Lambda Function URL here
 // ---------------------------------------------------------------
-const BEDROCK_URL = 'https://a3rb7swog2.execute-api.us-west-2.amazonaws.com/analyze';
-const SAM_URL = 'https://wtcqbp7rmnoy3pf7hty2bcyoea0dcese.lambda-url.us-west-2.on.aws/';
+const DEFAULT_BEDROCK_URL = 'https://a3rb7swog2.execute-api.us-west-2.amazonaws.com/analyze';
+const DEFAULT_SAM_URL = 'https://wtcqbp7rmnoy3pf7hty2bcyoea0dcese.lambda-url.us-west-2.on.aws/';
 const SAM_PRECEDENCE_THRESHOLD = 80;
+const URL_PARAMS = new URLSearchParams(window.location.search);
+const BEDROCK_URL = URL_PARAMS.get('bedrockUrl') || window.localStorage.getItem('bedrockLambdaUrl') || DEFAULT_BEDROCK_URL;
+const SAM_URL = URL_PARAMS.get('samUrl') || window.localStorage.getItem('samLambdaUrl') || DEFAULT_SAM_URL;
 
 let state = {
   crit: 3,
+  commsLost: false,
   imgDataUrl: null,
   imgName: null,
   samJudgment: null,
   fullReport: null,
   claudeParsed: null,
   currentStage: 0,
-  jobId: null
+  jobId: null,
+  crewResponse: null,
+  modalActions: []
 };
 
 function generateJobId() {
@@ -318,10 +369,20 @@ function renderSAMSummary() {
          '</div><br>';
 }
 
+function normalizeDefectLabel(label) {
+  let text = String(label || '').trim().toLowerCase().replace(/[_-]/g, ' ');
+  if(!text || text === 'unknown') return 'unknown';
+  if(text === 'none' || text === 'nominal' || text === 'no defect' || text === 'good') return 'none';
+  if(text.includes('spaghet') || text.includes('bird') || text.includes('nest')) return 'spaghetti';
+  if(text.includes('string') || text.includes('wisp') || text.includes('hair')) return 'stringing';
+  if(text.includes('under') || text.includes('extrusion')) return 'underextrusion';
+  return text;
+}
+
 function samAndClaudeAgree() {
   if(!state.claudeParsed || !state.samJudgment) return false;
-  let samLabel = String(state.samJudgment.e || '').trim().toLowerCase();
-  let claudeLabel = String(state.claudeParsed.detected_defect || '').trim().toLowerCase();
+  let samLabel = normalizeDefectLabel(state.samJudgment.e || '');
+  let claudeLabel = normalizeDefectLabel(state.claudeParsed.detected_defect || '');
   return samLabel && claudeLabel && samLabel === claudeLabel;
 }
 
@@ -334,20 +395,12 @@ function renderSamClaudeComparison() {
   html += '<div class="outcome-summary">Recorded SAM prediction: <strong>' + samLabel + '</strong> at <strong>' + state.samJudgment.c + '%</strong> confidence.<br>';
   html += 'Claude parsed defect: <strong>' + claudeLabel + '</strong>.</div>';
   if(samLabel === claudeLabel) {
-    html += '<div style="font-size:11px;color:#3fb950;margin-top:6px;">SAM and Claude agree on the defect label.</div>';
+    html += '<div style="font-size:11px;color:#3fb950;margin-top:6px;">SAM and Claude agree on the defect family after normalization.</div>';
   } else {
-    html += '<div style="font-size:11px;color:#f85149;margin-top:6px;">SAM and Claude do not agree on the defect label.</div>';
+    html += '<div style="font-size:11px;color:#f85149;margin-top:6px;">SAM and Claude do not agree. Claude remains final authority while comms are available.</div>';
   }
   html += '</div><br>';
   return html;
-}
-
-function shouldPreserveSamDecision() {
-  if(!state.claudeParsed || !state.samJudgment) return false;
-  let samLabel = String(state.samJudgment.e || '').trim().toLowerCase();
-  let claudeLabel = String(state.claudeParsed.detected_defect || '').trim().toLowerCase();
-  if(!samLabel || !claudeLabel) return false;
-  return state.samJudgment.c >= SAM_PRECEDENCE_THRESHOLD && samLabel !== claudeLabel;
 }
 
 function renderDecisionSource(source) {
@@ -355,6 +408,136 @@ function renderDecisionSource(source) {
          '<div class="resp-src" style="color:#334155">FINAL DECISION SOURCE</div>' +
          '<div class="outcome-summary">' + source + '</div>' +
          '</div><br>';
+}
+
+function setCommsLost(enabled) {
+  state.commsLost = !!enabled;
+  let dot = document.getElementById('status-dot');
+  dot.classList.toggle('comms-lost', state.commsLost);
+  dot.title = state.commsLost ? 'Comms blackout simulated' : 'System nominal';
+}
+
+function escapeHtml(text) {
+  return String(text || '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
+}
+
+function formatCrewDetailLines(lines) {
+  return lines.map(line => '<div style="margin-bottom:6px;">' + line + '</div>').join('');
+}
+
+function renderCrewImage() {
+  if(state.imgDataUrl) {
+    return '<img src="' + state.imgDataUrl + '" alt="Crew review frame capture">';
+  }
+  return '<div style="min-height:220px;display:flex;align-items:center;justify-content:center;border:1px dashed #d4c8b6;border-radius:6px;color:#7c705a;font-size:11px;">No frame capture attached for this review.</div>';
+}
+
+function closeCrewModal() {
+  document.getElementById('crew-modal-backdrop').classList.add('hidden');
+}
+
+function recordCrewResponse(label, details) {
+  state.crewResponse = { label, details };
+  closeCrewModal();
+  let outcome = document.getElementById('outcome-content');
+  if(outcome) {
+    outcome.insertAdjacentHTML('beforeend', '<div class="crew-response-log"><strong>Crew response recorded:</strong> ' + escapeHtml(label) + '<br>' + escapeHtml(details) + '</div>');
+  }
+}
+
+function openCrewModal(config) {
+  state.crewResponse = null;
+  state.modalActions = config.actions.slice();
+  document.getElementById('crew-modal-title').textContent = config.title;
+  document.getElementById('crew-modal-subtitle').textContent = config.subtitle;
+  document.getElementById('crew-modal-image-wrap').innerHTML = renderCrewImage();
+  document.getElementById('crew-modal-body').innerHTML = config.bodyHtml;
+  document.getElementById('crew-modal-actions').innerHTML = config.actions.map((action, index) => {
+    return '<button class="action-btn ' + (action.variant || '') + '" type="button" onclick="recordCrewResponseFromModal(' + index + ')">' + escapeHtml(action.label) + '</button>';
+  }).join('');
+  document.getElementById('crew-modal-backdrop').classList.remove('hidden');
+}
+
+function recordCrewResponseFromModal(index) {
+  let action = state.modalActions[index];
+  if(!action) return;
+  recordCrewResponse(action.label, action.details);
+}
+
+function maybeOpenCrewModalFromClaude(parsed, clabel) {
+  if(!parsed) return;
+  let title = '';
+  let subtitle = '';
+  let bodyHtml = '';
+  let actions = [];
+  let defect = escapeHtml(parsed.detected_defect || 'UNKNOWN');
+  let summaryLines = [
+    'Action required: <strong>' + escapeHtml(parsed.action_required || 'NONE') + '</strong>',
+    'Detected defect: <strong>' + defect + '</strong>',
+    'Criticality: <strong>' + escapeHtml(clabel) + '</strong>'
+  ];
+  if(parsed.crew_message) summaryLines.push('Crew message: ' + escapeHtml(parsed.crew_message));
+  if(parsed.autonomous_corrections) summaryLines.push('Proposed changes: ' + escapeHtml(parsed.autonomous_corrections));
+
+  if(parsed.action_required === 'CREW_APPROVAL') {
+    title = 'Crew Approval Required';
+    subtitle = 'Claude recommends autonomous changes, but this print cannot proceed until the crew signs off.';
+    bodyHtml = formatCrewDetailLines(summaryLines);
+    actions = [
+      { label: 'Approve Autonomous Changes', details: 'Crew approved Claude-recommended changes and authorized continuation.', variant: '' },
+      { label: 'Override Recommendations', details: 'Crew rejected autonomous changes and requested manual handling.', variant: 'red' }
+    ];
+  } else if(parsed.action_required === 'PAUSE_AND_INSPECT') {
+    title = 'Pause And Inspect';
+    subtitle = 'Claude requires a physical inspection before the print may resume.';
+    bodyHtml = formatCrewDetailLines(summaryLines);
+    actions = [
+      { label: 'Inspected - Resume', details: 'Crew completed inspection and approved resume.', variant: '' },
+      { label: 'Confirm Abort', details: 'Crew inspection escalated this print to abort.', variant: 'red' }
+    ];
+  } else if(parsed.action_required === 'ABORT') {
+    title = 'Abort Notification';
+    subtitle = 'Claude has determined the print must be terminated and the crew must complete post-abort handling.';
+    bodyHtml = formatCrewDetailLines(summaryLines);
+    actions = [
+      { label: 'Acknowledge + FOD Sweep', details: 'Crew acknowledged the abort and confirmed FOD sweep procedures.', variant: 'red' },
+      { label: 'Hold For Review', details: 'Crew held the abort for immediate review before clearing the bay.', variant: 'green' }
+    ];
+  }
+
+  if(actions.length) {
+    openCrewModal({ title, subtitle, bodyHtml, actions });
+  }
+}
+
+function maybeOpenCrewModalForCommsLoss(j, clabel) {
+  let defect = normalizeDefectLabel(j.e || '');
+  let needsVisualConfirm = defect !== 'none' || (defect === 'none' && state.crit >= 2);
+  if(!needsVisualConfirm) return;
+  let title = defect === 'none' ? 'Crew Visual Confirmation Required' : 'Crew Review Required - Comms Blackout';
+  let subtitle = defect === 'none'
+    ? 'Communications are down and this Level ' + state.crit + ' part still needs a human visual confirmation before continuing.'
+    : 'Communications are down. The crew must make the local go/no-go decision from the frame capture.';
+  let bodyHtml = formatCrewDetailLines([
+    'SAM label: <strong>' + escapeHtml(String(j.e || 'UNKNOWN').toUpperCase()) + '</strong>',
+    'SAM confidence: <strong>' + escapeHtml(String(j.c || 0)) + '%</strong>',
+    'Criticality: <strong>' + escapeHtml(clabel) + '</strong>',
+    defect === 'none'
+      ? 'Visual confirm reason: No anomaly detected, but this part class requires crew confirmation during blackout.'
+      : 'Visual confirm reason: Defect detected during blackout. Crew must approve continuation or pause the print.'
+  ]);
+  openCrewModal({
+    title,
+    subtitle,
+    bodyHtml,
+    actions: [
+      { label: 'Approve - Continue', details: 'Crew approved continuation during comms blackout.', variant: '' },
+      { label: 'Flag - Pause Print', details: 'Crew paused the print for local intervention during comms blackout.', variant: 'red' }
+    ]
+  });
 }
 
 // ---------------------------------------------------------------
@@ -387,13 +570,52 @@ function loadImage(e) {
   reader.readAsDataURL(file);
 }
 
+function clearImagePreview() {
+  let wrap = document.getElementById('img-preview-wrap');
+  wrap.innerHTML = '<div style="font-size:28px;color:#484f58;">[ CAM ]</div><div class="img-drop-text">Click to load frame capture - Accepts JPG / PNG<br><span style="font-size:9px;">In deployment: continuous MJPEG stream with auto-capture</span></div>';
+  document.getElementById('img-drop').classList.remove('has-img');
+}
+
 function renderImagePreview() {
   let wrap = document.getElementById('img-preview-wrap');
   if(state && state.imgDataUrl) {
     let name = state.imgName || 'capture.jpg';
     wrap.innerHTML = '<img src="'+state.imgDataUrl+'" style="max-height:160px;max-width:100%;border-radius:4px;"><div class="img-drop-text" style="margin-top:6px;color:#3fb950;">Frame captured - '+name+'</div>';
     document.getElementById('img-drop').classList.add('has-img');
+  } else {
+    clearImagePreview();
   }
+}
+
+async function requestSamInference(imageDataUrl) {
+  if (!SAM_URL) {
+    throw new Error('SAM Lambda URL is not configured. Set ?samUrl=... in the page URL or localStorage.samLambdaUrl.');
+  }
+
+  let samResp = await fetch(SAM_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: imageDataUrl })
+  });
+
+  let rawText = await samResp.text();
+  let data = {};
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch (err) {
+    throw new Error('SAM Lambda returned invalid JSON');
+  }
+
+  let body = typeof data.body === 'string' ? JSON.parse(data.body) : (data.body || data);
+
+  if (!samResp.ok) {
+    throw new Error(body.error || data.error || ('SAM Lambda failed with status ' + samResp.status));
+  }
+  if (!body.label) {
+    throw new Error('SAM Lambda response did not include label/confidence/raw_scores');
+  }
+
+  return body;
 }
 
 // ---------------------------------------------------------------
@@ -563,32 +785,26 @@ async function runSAM() {
   if(state.imgDataUrl && !selectedError) {
     goStage(1);
     try {
-      let samResp = await fetch(SAM_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: state.imgDataUrl })
-      });
-      let samData = await samResp.json();
-      let body = typeof samData.body === 'string' ? JSON.parse(samData.body) : samData;
-      if(body.label) {
-        // Real SAM result
-        state.samJudgment = {
-          j: 'SAM inference: ' + body.label.toUpperCase() + ' detected. Confidence: ' + body.confidence + '%. Raw scores: ' + JSON.stringify(body.raw_scores),
-          e: body.label,
-          c: Math.round(body.confidence)
-        };
-        console.log('SAM SET:', JSON.stringify(state.samJudgment));
-        // Show raw scores in SAM stage
-        document.getElementById('sam-processing').innerHTML =
-          '<strong>SAM REAL INFERENCE RESULT</strong><br>' +
-          'Label: <strong>' + body.label.toUpperCase() + '</strong> | Confidence: <strong>' + body.confidence + '%</strong><br>' +
-          'Raw scores: ' + Object.entries(body.raw_scores).map(([k,v]) => k+': '+v+'%').join(' | ');
-      } else {
-        state.samJudgment = getSAMJudgment();
-      }
+      document.getElementById('sam-processing').innerHTML =
+        '<span class="spinner"></span> Calling SAM Lambda for live inference...';
+      let body = await requestSamInference(state.imgDataUrl);
+      state.samJudgment = {
+        j: 'SAM inference: ' + body.label.toUpperCase() + ' detected. Confidence: ' + body.confidence + '%. Raw scores: ' + JSON.stringify(body.raw_scores),
+        e: body.label,
+        c: Math.round(body.confidence)
+      };
+      console.log('SAM SET:', JSON.stringify(state.samJudgment));
+      document.getElementById('sam-processing').innerHTML =
+        '<strong>SAM REAL INFERENCE RESULT</strong><br>' +
+        'Label: <strong>' + body.label.toUpperCase() + '</strong> | Confidence: <strong>' + body.confidence + '%</strong><br>' +
+        'Raw scores: ' + Object.entries(body.raw_scores).map(([k,v]) => k+': '+Number(v).toFixed(2)+'%').join(' | ');
     } catch(err) {
-      console.log('SAM inference failed, using simulation:', err);
-      state.samJudgment = getSAMJudgment();
+      console.log('SAM inference failed:', err);
+      state.samJudgment = {j:'SAM inference failed. Manual review required until endpoint is restored.', e:'low confidence (unsure)', c:0};
+      document.getElementById('sam-processing').innerHTML =
+        '<strong>SAM INFERENCE FAILED</strong><br>' +
+        escapeHtml(err.message || String(err)) +
+        '<br><span style="font-size:10px;opacity:0.75;">Expected source: SAM Lambda endpoint returning label, confidence, and raw_scores.</span>';
     }
     setTimeout(() => {
       if(state.commsLost) { runCommsLostPath(); }
@@ -691,7 +907,7 @@ async function callBedrock(reportText) {
 
     let dm = rawText.match(/detected.defect[^\n:]+[:]\s*([^\n]+)/i);
     if(!dm) dm = rawText.match(/detected.defect\s*[:\-]\s*([^\n]+)/i);
-    if(dm) defect = dm[1].trim();
+    if(dm) defect = normalizeDefectLabel(dm[1].trim()).toUpperCase();
 
     let cm = rawText.match(/crew.message[^\n:]+[:]\s*([^\n]+)/i);
     if(cm && cm[1].trim().toLowerCase() !== 'none') crewMsg = cm[1].trim();
@@ -699,7 +915,7 @@ async function callBedrock(reportText) {
     let ac = rawText.match(/autonomous.corrections[^\n:]+[:]\s*([^\n]+)/i);
     if(ac && ac[1].trim().toLowerCase() !== 'none') autoCorrections = ac[1].trim();
 
-    if(action === 'MANUAL_REVIEW' || action === 'CREW_APPROVAL' || action === 'ABORT') notify = true;
+    if(action === 'MANUAL_REVIEW' || action === 'PAUSE_AND_INSPECT' || action === 'CREW_APPROVAL' || action === 'ABORT') notify = true;
 
     // Extract telemetry adjustments from Lambda response
     let telemetryAdj = {};
@@ -726,6 +942,11 @@ async function callBedrock(reportText) {
     state.claudeError = err.message;
     goToOutcome(false, err.message);
   }
+}
+
+function runCommsLostPath() {
+  goStage(1);
+  setTimeout(() => goToOutcome(true), 900);
 }
 
 // ---------------------------------------------------------------
@@ -756,6 +977,7 @@ function runEndOfPrint() {
 // ---------------------------------------------------------------
 function goToOutcome(commsLost, errorMsg) {
   goStage(4);
+  closeCrewModal();
 
   // Build flow row
   let flowEl = document.getElementById('flow-outcome');
@@ -783,11 +1005,13 @@ function goToOutcome(commsLost, errorMsg) {
   if(commsLost) {
     // COMMS LOST - SAM autonomous decision
     let aboveThreshold = j.c >= 80;
+    let normalizedDefect = normalizeDefectLabel(j.e || '');
+    let needsCrewPopup = normalizedDefect !== 'none' || (normalizedDefect === 'none' && state.crit >= 2);
     let statusColor = aboveThreshold ? '#f85149' : '#d29922';
     let statusLabel = aboveThreshold ? 'COMMS LOST - SAM AUTONOMOUS DECISION' : 'COMMS LOST - CONFIDENCE BELOW THRESHOLD';
     let action = aboveThreshold
-      ? 'Communication with ground systems lost. SAM confidence is '+j.c+'% (above 80% threshold). Autonomous decision issued. Crew notification sent.'
-      : 'Communication with ground systems lost. SAM confidence is '+j.c+'% (below 80% threshold). Insufficient confidence for autonomous action. Crew notified to inspect manually.';
+      ? 'Communication with ground systems lost. SAM confidence is '+j.c+'% (above 80% threshold). Local crew-in-the-loop review is used only when this print requires confirmation.'
+      : 'Communication with ground systems lost. SAM confidence is '+j.c+'% (below 80% threshold). Insufficient confidence for autonomous action. Crew must inspect locally.';
 
     html += '<div class="comms-banner"><span>[ ! ] COMMS LOST - AUTONOMOUS MODE ACTIVE</span></div>';
     html += '<div class="resp-block" style="border-color:'+statusColor+'44;background:'+statusColor+'08;">';
@@ -795,7 +1019,7 @@ function goToOutcome(commsLost, errorMsg) {
     html += '<div class="outcome-header" style="color:'+statusColor+';">'+( aboveThreshold ? (j.e === 'none' ? 'CONTINUE PRINT' : 'PAUSE AND INSPECT') : 'MANUAL REVIEW REQUIRED' )+'</div>';
     html += '<div class="outcome-summary">'+action+'</div>';
     html += '<div style="font-size:11px;color:#7c705a;margin-top:8px;">SAM Error Label: <strong>'+j.e.toUpperCase()+'</strong> &nbsp;|&nbsp; Confidence: <strong>'+j.c+'%</strong> &nbsp;|&nbsp; Criticality: <strong>'+clabel+'</strong></div>';
-    html += '<div style="font-size:11px;color:'+statusColor+';margin-top:8px;">Crew notification: <strong>SENT</strong></div>';
+    html += '<div style="font-size:11px;color:'+statusColor+';margin-top:8px;">Crew device popup: <strong>'+(needsCrewPopup ? 'REQUIRED' : 'NOT REQUIRED')+'</strong></div>';
     html += '</div>';
     html += renderDecisionSource('SAM - no Claude decision available (fallback)');
 
@@ -813,16 +1037,11 @@ function goToOutcome(commsLost, errorMsg) {
       html += '<div class="outcome-summary">Claude confirms the same defect as SAM. Final disposition follows the shared prediction.</div>';
       html += '</div><br>';
     }
-    if(shouldPreserveSamDecision()) {
-      html += '<div class="err-block">Claude disagreed with a high-confidence SAM prediction, but the recorded SAM result is preserved because SAM confidence is '+state.samJudgment.c+'%.</div>';
-      html += renderDecisionSource('SAM - preserved over Claude due to high confidence and disagreement');
-      html += renderSAMDisposition(j, clabel, ccolor);
-    } else {
-      html += renderDecisionSource('Claude - final structured defect used');
-      // FULL PIPELINE - show Claude raw markdown response + decision fields
-      let p = state.claudeParsed;
-      let riskColor   = p.risk_level === 'HIGH' ? '#f85149' : p.risk_level === 'MEDIUM' ? '#d29922' : '#3fb950';
-      let actionColor = (p.action_required === 'NONE') ? '#3fb950' : '#f85149';
+    html += renderDecisionSource('Claude - final authority while comms are available');
+    // FULL PIPELINE - show Claude raw markdown response + decision fields
+    let p = state.claudeParsed;
+    let riskColor   = p.risk_level === 'HIGH' ? '#f85149' : p.risk_level === 'MEDIUM' ? '#d29922' : '#3fb950';
+    let actionColor = (p.action_required === 'NONE') ? '#3fb950' : '#f85149';
 
     // Convert markdown to basic HTML for display
     let displayText = p.raw_response
@@ -861,13 +1080,14 @@ function goToOutcome(commsLost, errorMsg) {
       html += '</div>';
     }
     html += '</div>';
-    }
 
   } else {
     html += renderSAMDisposition(j, clabel, ccolor);
   }
 
   el.innerHTML = html;
+  if(commsLost) maybeOpenCrewModalForCommsLoss(j, clabel);
+  if(!commsLost && !errorMsg && state.claudeParsed) maybeOpenCrewModalFromClaude(state.claudeParsed, clabel);
 }
 
 function renderSAMDisposition(j, clabel, ccolor) {
@@ -940,17 +1160,22 @@ function continuePrint() {
   let keepCrit  = state.crit;
   state = {
     crit:         keepCrit,
+    commsLost:    state.commsLost,
     imgDataUrl:   keepImg,
     imgName:      keepName,
     samJudgment:  null,
     fullReport:   null,
     claudeParsed: null,
     currentStage: 0,
-    jobId:        keepJobId
+    jobId:        keepJobId,
+    crewResponse: null,
+    modalActions: []
   };
   document.getElementById('t-part').style.borderColor = '';
   document.getElementById('t-error').value = '';  // always clear override on continue
+  document.getElementById('comms-toggle').checked = state.commsLost;
   setCrit(keepCrit);
+  setCommsLost(state.commsLost);
   goStage(0);
 }
 
@@ -958,17 +1183,20 @@ function continuePrint() {
 // RESET
 // ---------------------------------------------------------------
 function resetAll() {
-  // Keep image across sessions so user doesn't need to re-upload
-  let keepImg = state.imgDataUrl;
-  let keepName = state.imgName;
-  state = { crit: 3, imgDataUrl: keepImg, imgName: keepName, samJudgment: null, fullReport: null, claudeParsed: null, currentStage: 0, jobId: null };
+  state = { crit: 3, commsLost: false, imgDataUrl: null, imgName: null, samJudgment: null, fullReport: null, claudeParsed: null, currentStage: 0, jobId: null, crewResponse: null, modalActions: [] };
   document.getElementById('t-part').value = '';
+  document.getElementById('t-crew').value = '';
   document.getElementById('t-part').style.borderColor = '';
   // Reset file input so same file can be selected again
   document.getElementById('file-input').value = '';
+  document.getElementById('comms-toggle').checked = false;
+  clearImagePreview();
   setCrit(3);
+  setCommsLost(false);
   goStage(0);
 }
+
+setCommsLost(false);
 </script>
 
 </body>
