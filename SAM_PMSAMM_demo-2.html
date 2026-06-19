@@ -74,18 +74,6 @@
   .confidence-fill { height: 100%; border-radius: 2px; transition: width 0.6s; }
   .hidden { display: none; }
   #file-input { display: none; }
-  .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; }
-  .modal-overlay.active { display: flex; }
-  .modal-box { background: #f7f3ea; border: 1px solid #d4c8b6; border-radius: 8px; padding: 20px; max-width: 480px; width: 90%; max-height: 90vh; overflow-y: auto; }
-  .modal-header { font-size: 10px; letter-spacing: 2px; color: #f85149; text-transform: uppercase; margin-bottom: 10px; border-bottom: 1px solid #f8514944; padding-bottom: 6px; }
-  .modal-img { width: 100%; border-radius: 4px; margin-bottom: 12px; border: 1px solid #d4c8b6; }
-  .modal-msg { font-size: 11px; line-height: 1.6; color: #1f1b17; margin-bottom: 14px; background: #fff8ef; padding: 10px; border-radius: 4px; border: 1px solid #d4c8b6; }
-  .modal-meta { font-size: 10px; color: #7c705a; margin-bottom: 14px; }
-  .modal-btns { display: flex; gap: 10px; }
-  .modal-btn-approve { flex: 1; background: #0033a0; color: #fff; border: none; padding: 10px; font-family: monospace; font-size: 11px; letter-spacing: 1px; cursor: pointer; border-radius: 4px; text-transform: uppercase; }
-  .modal-btn-flag { flex: 1; background: #f8514922; color: #f85149; border: 1px solid #f8514944; padding: 10px; font-family: monospace; font-size: 11px; letter-spacing: 1px; cursor: pointer; border-radius: 4px; text-transform: uppercase; }
-  .modal-btn-approve:hover { background: #0048c8; }
-  .modal-btn-flag:hover { background: #f8514944; }
   .comms-banner { background: #f8514911; border: 1px solid #f8514944; border-radius: 4px; padding: 8px 14px; font-size: 10px; color: #f85149; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
   .comms-toggle-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 10px 14px; border: 1px solid #d4c8b6; border-radius: 6px; background: #f7f3ea; }
   .comms-toggle-row label { font-size: 10px; letter-spacing: 1px; color: #463525; text-transform: uppercase; cursor: pointer; }
@@ -295,20 +283,6 @@
   </div>
 </div>
 
-<!-- CREW APPROVAL MODAL -->
-<div class="modal-overlay" id="crew-modal">
-  <div class="modal-box">
-    <div class="modal-header" id="modal-header">[ ! ] CREW NOTIFICATION - ACTION REQUIRED</div>
-    <img class="modal-img" id="modal-img" src="" alt="Frame capture" style="display:none;">
-    <div class="modal-msg" id="modal-msg"></div>
-    <div class="modal-meta" id="modal-meta"></div>
-    <div class="modal-btns">
-      <button class="modal-btn-approve" onclick="crewApprove()">Approve - Continue</button>
-      <button class="modal-btn-flag" onclick="crewFlag()">Flag - Pause Print</button>
-    </div>
-  </div>
-</div>
-
 <script>
 // ---------------------------------------------------------------
 // CONFIG - paste your Lambda Function URL here
@@ -344,47 +318,37 @@ function renderSAMSummary() {
          '</div><br>';
 }
 
-// ---------------------------------------------------------------
-// DEFECT NORMALIZATION - treat variants as same defect
-// ---------------------------------------------------------------
-function normalizeDefect(label) {
-  let l = String(label || '').trim().toLowerCase().replace(/[_\s-]+/g, ' ');
-  if(l.includes('spaghet')) return 'spaghetti';
-  if(l.includes('string') || l.includes('wisp') || l.includes('hair')) return 'stringing';
-  if(l.includes('under') || l.includes('extrusion')) return 'underextrusion';
-  if(l === 'none' || l === 'good' || l === '' || l === 'no defect') return 'none';
-  return l; // novel defect - keep as-is
-}
-
 function samAndClaudeAgree() {
   if(!state.claudeParsed || !state.samJudgment) return false;
-  let samLabel    = normalizeDefect(state.samJudgment.e);
-  let claudeLabel = normalizeDefect(state.claudeParsed.detected_defect);
+  let samLabel = String(state.samJudgment.e || '').trim().toLowerCase();
+  let claudeLabel = String(state.claudeParsed.detected_defect || '').trim().toLowerCase();
   return samLabel && claudeLabel && samLabel === claudeLabel;
 }
 
 function renderSamClaudeComparison() {
   if(!state.claudeParsed || !state.samJudgment) return '';
-  let samLabel    = String(state.samJudgment.e || 'UNKNOWN').trim().toUpperCase();
+  let samLabel = String(state.samJudgment.e || 'UNKNOWN').trim().toUpperCase();
   let claudeLabel = String(state.claudeParsed.detected_defect || 'UNKNOWN').trim().toUpperCase();
-  let samNorm     = normalizeDefect(state.samJudgment.e).toUpperCase();
-  let claudeNorm  = normalizeDefect(state.claudeParsed.detected_defect).toUpperCase();
-  let agree       = samNorm === claudeNorm;
   let html = '<div class="resp-block" style="border-color:#0033a044;background:#edf3ff;">';
   html += '<div class="resp-src" style="color:#0033a0">SAM vs CLAUDE</div>';
-  html += '<div class="outcome-summary">SAM predicted: <strong>' + samLabel + '</strong> at <strong>' + state.samJudgment.c + '%</strong> confidence.<br>';
-  html += 'Claude determination: <strong>' + claudeLabel + '</strong>.</div>';
-  if(agree) {
-    html += '<div style="font-size:11px;color:#3fb950;margin-top:6px;">SAM and Claude agree on the defect type.</div>';
+  html += '<div class="outcome-summary">Recorded SAM prediction: <strong>' + samLabel + '</strong> at <strong>' + state.samJudgment.c + '%</strong> confidence.<br>';
+  html += 'Claude parsed defect: <strong>' + claudeLabel + '</strong>.</div>';
+  if(samLabel === claudeLabel) {
+    html += '<div style="font-size:11px;color:#3fb950;margin-top:6px;">SAM and Claude agree on the defect label.</div>';
   } else {
-    html += '<div style="font-size:11px;color:#f85149;margin-top:6px;">SAM and Claude disagree. Claude override applied — Claude is final authority.</div>';
+    html += '<div style="font-size:11px;color:#f85149;margin-top:6px;">SAM and Claude do not agree on the defect label.</div>';
   }
   html += '</div><br>';
   return html;
 }
 
-// shouldPreserveSamDecision - Claude is always final authority
-function shouldPreserveSamDecision() { return false; }
+function shouldPreserveSamDecision() {
+  if(!state.claudeParsed || !state.samJudgment) return false;
+  let samLabel = String(state.samJudgment.e || '').trim().toLowerCase();
+  let claudeLabel = String(state.claudeParsed.detected_defect || '').trim().toLowerCase();
+  if(!samLabel || !claudeLabel) return false;
+  return state.samJudgment.c >= SAM_PRECEDENCE_THRESHOLD && samLabel !== claudeLabel;
+}
 
 function renderDecisionSource(source) {
   return '<div class="resp-block" style="border-color:#64748b44;background:#f8fafc;">' +
@@ -819,50 +783,21 @@ function goToOutcome(commsLost, errorMsg) {
   if(commsLost) {
     // COMMS LOST - SAM autonomous decision
     let aboveThreshold = j.c >= 80;
-    let samSaysNone = j.e === 'none' || j.e === '';
-    let criticalPart = state.crit >= 2;
-
-    // Visual confirmation rule: SAM says NONE + comms lost + Level 2 or 3
-    let visualConfirmRequired = samSaysNone && criticalPart && aboveThreshold;
-
-    let statusColor = visualConfirmRequired ? '#d29922' : aboveThreshold ? '#f85149' : '#d29922';
-
-    let statusLabel = visualConfirmRequired
-      ? 'COMMS LOST - VISUAL CONFIRMATION RECOMMENDED'
-      : aboveThreshold ? 'COMMS LOST - SAM AUTONOMOUS DECISION'
-      : 'COMMS LOST - CONFIDENCE BELOW THRESHOLD';
-
-    let action = visualConfirmRequired
-      ? 'SAM reports nominal at '+j.c+'% confidence. Ground verification unavailable due to communication blackout. For Level '+state.crit+' '+clabel+' parts, crew visual confirmation is required before continuing. Crew notification sent.'
-      : aboveThreshold
-        ? 'Communication with ground systems lost. SAM confidence is '+j.c+'% (above 80% threshold). Autonomous decision issued. Crew notification sent.'
-        : 'Communication with ground systems lost. SAM confidence is '+j.c+'% (below 80% threshold). Insufficient confidence for autonomous action. Crew notified to inspect manually.';
-
-    let outcomeHeader = visualConfirmRequired
-      ? 'VISUAL CONFIRMATION REQUIRED'
-      : aboveThreshold ? (samSaysNone ? 'CONTINUE PRINT' : 'PAUSE AND INSPECT')
-      : 'MANUAL REVIEW REQUIRED';
-
-    let crewNotified = aboveThreshold || visualConfirmRequired;
+    let statusColor = aboveThreshold ? '#f85149' : '#d29922';
+    let statusLabel = aboveThreshold ? 'COMMS LOST - SAM AUTONOMOUS DECISION' : 'COMMS LOST - CONFIDENCE BELOW THRESHOLD';
+    let action = aboveThreshold
+      ? 'Communication with ground systems lost. SAM confidence is '+j.c+'% (above 80% threshold). Autonomous decision issued. Crew notification sent.'
+      : 'Communication with ground systems lost. SAM confidence is '+j.c+'% (below 80% threshold). Insufficient confidence for autonomous action. Crew notified to inspect manually.';
 
     html += '<div class="comms-banner"><span>[ ! ] COMMS LOST - AUTONOMOUS MODE ACTIVE</span></div>';
     html += '<div class="resp-block" style="border-color:'+statusColor+'44;background:'+statusColor+'08;">';
     html += '<div class="resp-src" style="color:'+statusColor+'">'+statusLabel+'</div>';
-    html += '<div class="outcome-header" style="color:'+statusColor+';">'+outcomeHeader+'</div>';
+    html += '<div class="outcome-header" style="color:'+statusColor+';">'+( aboveThreshold ? (j.e === 'none' ? 'CONTINUE PRINT' : 'PAUSE AND INSPECT') : 'MANUAL REVIEW REQUIRED' )+'</div>';
     html += '<div class="outcome-summary">'+action+'</div>';
     html += '<div style="font-size:11px;color:#7c705a;margin-top:8px;">SAM Error Label: <strong>'+j.e.toUpperCase()+'</strong> &nbsp;|&nbsp; Confidence: <strong>'+j.c+'%</strong> &nbsp;|&nbsp; Criticality: <strong>'+clabel+'</strong></div>';
-    html += '<div style="font-size:11px;color:'+statusColor+';margin-top:8px;">Crew notification: <strong>'+(crewNotified ? 'SENT' : 'NONE')+'</strong></div>';
+    html += '<div style="font-size:11px;color:'+statusColor+';margin-top:8px;">Crew notification: <strong>SENT</strong></div>';
     html += '</div>';
-    html += renderDecisionSource('SAM - no Claude decision available (comms blackout)');
-    // Show crew modal if notification required
-    if(crewNotified) {
-      let crew = document.getElementById('t-crew').value || 'Crew';
-      setTimeout(() => showCrewModal(
-        crew + ' - Bay 3 ' + (visualConfirmRequired ? 'SAM reports nominal but visual confirmation is required. Communication blackout active — please inspect print visually and respond.' : 'SAM detected ' + j.e.toUpperCase() + ' at ' + j.c + '% confidence. Communication blackout active — approve continuation or flag for inspection.'),
-        '[ ! ] CREW NOTIFICATION - COMMS BLACKOUT',
-        'SAM: ' + j.e.toUpperCase() + ' | Confidence: ' + j.c + '% | Criticality: Level ' + state.crit
-      ), 300);
-    }
+    html += renderDecisionSource('SAM - no Claude decision available (fallback)');
 
   } else if(errorMsg) {
     // BEDROCK ERROR - fall back to SAM disposition
@@ -872,16 +807,30 @@ function goToOutcome(commsLost, errorMsg) {
   } else if(state.claudeParsed) {
     html += renderSAMSummary();
     html += renderSamClaudeComparison();
+    if(samAndClaudeAgree()) {
+      html += '<div class="resp-block" style="border-color:#3fb95044;background:#def4e0;">';
+      html += '<div class="resp-src" style="color:#3fb950">SAM + Claude agree</div>';
+      html += '<div class="outcome-summary">Claude confirms the same defect as SAM. Final disposition follows the shared prediction.</div>';
+      html += '</div><br>';
+    }
+    if(shouldPreserveSamDecision()) {
+      html += '<div class="err-block">Claude disagreed with a high-confidence SAM prediction, but the recorded SAM result is preserved because SAM confidence is '+state.samJudgment.c+'%.</div>';
+      html += renderDecisionSource('SAM - preserved over Claude due to high confidence and disagreement');
+      html += renderSAMDisposition(j, clabel, ccolor);
+    } else {
+      html += renderDecisionSource('Claude - final structured defect used');
+      // FULL PIPELINE - show Claude raw markdown response + decision fields
+      let p = state.claudeParsed;
+      let riskColor   = p.risk_level === 'HIGH' ? '#f85149' : p.risk_level === 'MEDIUM' ? '#d29922' : '#3fb950';
+      let actionColor = (p.action_required === 'NONE') ? '#3fb950' : '#f85149';
 
-    let p = state.claudeParsed;
-    let riskColor   = p.risk_level === 'HIGH' ? '#f85149' : p.risk_level === 'MEDIUM' ? '#d29922' : '#3fb950';
-    let actionColor = (p.action_required === 'NONE') ? '#3fb950' : '#f85149';
-
+    // Convert markdown to basic HTML for display
     let displayText = p.raw_response
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
       .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
       .replace(/^## (.+)$/gm,'<div style="font-size:10px;letter-spacing:2px;color:#0033a0;text-transform:uppercase;margin:8px 0 3px 0;border-bottom:1px solid #d4c8b688;padding-bottom:2px;">$1</div>')
       .replace(/^# (.+)$/gm,'<div style="font-size:11px;font-weight:600;letter-spacing:1px;color:#1f1b17;margin:6px 0 3px 0;">$1</div>')
+      .replace(/^\| (.+)$/gm,'<div style="font-size:10px;font-family:monospace;padding:1px 0;border-bottom:1px solid #d4c8b633;">| $1</div>')
       .replace(/^(\d+)\. (.+)$/gm,'<div style="padding:2px 0 2px 12px;border-left:2px solid #0033a022;margin-bottom:2px;font-size:11px;"><strong>$1.</strong> $2</div>')
       .replace(/---/g,'<hr style="border:none;border-top:1px solid #d4c8b644;margin:4px 0;">')
       .replace(/\n\n/g,'<br>')
@@ -892,34 +841,27 @@ function goToOutcome(commsLost, errorMsg) {
     html += displayText;
     html += '</div>';
 
+    // Decision summary bar
     html += '<div style="margin-top:10px;padding:10px 14px;border:1px solid '+riskColor+'44;border-radius:6px;background:'+riskColor+'08;">';
     html += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:6px;">';
     html += '<div style="font-size:11px;">Risk Level: <strong style="color:'+riskColor+';">'+(p.risk_level||'UNKNOWN')+'</strong></div>';
     html += '<div style="font-size:11px;">Action Required: <strong style="color:'+actionColor+';">'+(p.action_required||'N/A')+'</strong></div>';
     html += '<div style="font-size:11px;">Notify Crew: <strong style="color:'+(p.notify_crew ? '#f85149' : '#3fb950')+';">'+(p.notify_crew ? 'YES' : 'NO')+'</strong></div>';
     html += '<div style="font-size:11px;">SAM Confidence: <strong>'+j.c+'%</strong></div>';
-    html += '<div style="font-size:11px;">Criticality: <strong style="color:'+ccolor+';">' +clabel+'</strong></div>';
+    html += '<div style="font-size:11px;">Criticality: <strong style="color:'+ccolor+';">'+clabel+'</strong></div>';
     html += '</div>';
-
     if(p.crew_message) {
       html += '<div style="margin-top:8px;padding:8px 10px;background:#f8514911;border:1px solid #f8514944;border-radius:4px;font-size:11px;color:#f85149;">';
       html += '<strong>CREW NOTIFICATION:</strong> '+p.crew_message;
       html += '</div>';
-      let needsModal = ['CREW_APPROVAL','ABORT','PAUSE_AND_INSPECT'].includes(p.action_required);
-      if(needsModal) {
-        let mHead = p.action_required === 'ABORT' ? '[ ! ] PRINT ABORTED - CREW ACTION REQUIRED' : p.action_required === 'PAUSE_AND_INSPECT' ? '[ ! ] PRINT PAUSED - CREW INSPECTION REQUIRED' : '[ ! ] CREW APPROVAL REQUIRED';
-        let mApprove = p.action_required === 'ABORT' ? 'Acknowledged - Begin FOD Sweep' : p.action_required === 'PAUSE_AND_INSPECT' ? 'Inspected - Resume Print' : 'Approve Changes';
-        let mFlag = p.action_required === 'ABORT' ? 'Hold - Awaiting Assessment' : 'Override - Abort Print';
-        setTimeout(() => showCrewModal(p.crew_message, mHead, 'Risk: '+(p.risk_level||'')+' | Action: '+(p.action_required||'')+' | Level '+state.crit, mApprove, mFlag), 300);
-      }
     }
-
     if(p.autonomous_corrections) {
       html += '<div style="margin-top:8px;padding:8px 10px;background:#0033a011;border:1px solid #0033a044;border-radius:4px;font-size:11px;color:#0033a0;">';
       html += '<strong>AUTONOMOUS CORRECTIONS APPLIED:</strong> '+p.autonomous_corrections;
       html += '</div>';
     }
     html += '</div>';
+    }
 
   } else {
     html += renderSAMDisposition(j, clabel, ccolor);
@@ -979,43 +921,6 @@ function goStage(n) {
 }
 
 // ---------------------------------------------------------------
-// CREW APPROVAL MODAL
-// ---------------------------------------------------------------
-function showCrewModal(msg, header, meta, approveLabel, flagLabel) {
-  document.getElementById('modal-header').textContent = header || '[ ! ] CREW NOTIFICATION - ACTION REQUIRED';
-  document.getElementById('modal-msg').textContent = msg || '';
-  document.getElementById('modal-meta').textContent = meta || '';
-  // Update button labels if provided
-  document.querySelector('.modal-btn-approve').textContent = approveLabel || 'Approve - Continue';
-  document.querySelector('.modal-btn-flag').textContent = flagLabel || 'Flag - Pause Print';
-  let imgEl = document.getElementById('modal-img');
-  if(state.imgDataUrl) {
-    imgEl.src = state.imgDataUrl;
-    imgEl.style.display = 'block';
-  } else {
-    imgEl.style.display = 'none';
-  }
-  document.getElementById('crew-modal').classList.add('active');
-}
-
-function crewApprove() {
-  document.getElementById('crew-modal').classList.remove('active');
-  // Log approval
-  let approvalNote = document.createElement('div');
-  approvalNote.style.cssText = 'margin-top:8px;padding:6px 10px;background:#0033a011;border:1px solid #0033a044;border-radius:4px;font-size:11px;color:#0033a0;';
-  approvalNote.innerHTML = '<strong>CREW RESPONSE:</strong> Approved - Print continuing.';
-  document.getElementById('outcome-content').appendChild(approvalNote);
-}
-
-function crewFlag() {
-  document.getElementById('crew-modal').classList.remove('active');
-  let flagNote = document.createElement('div');
-  flagNote.style.cssText = 'margin-top:8px;padding:6px 10px;background:#f8514911;border:1px solid #f8514944;border-radius:4px;font-size:11px;color:#f85149;';
-  flagNote.innerHTML = '<strong>CREW RESPONSE:</strong> Flagged - Print paused pending crew inspection.';
-  document.getElementById('outcome-content').appendChild(flagNote);
-}
-
-// ---------------------------------------------------------------
 // CONTINUE SAME PRINT JOB
 // ---------------------------------------------------------------
 function continuePrint() {
@@ -1056,7 +961,7 @@ function resetAll() {
   // Keep image across sessions so user doesn't need to re-upload
   let keepImg = state.imgDataUrl;
   let keepName = state.imgName;
-  state = { crit: 3, imgDataUrl: keepImg, imgName: keepName, samJudgment: null, fullReport: null, claudeParsed: null, commsLost: document.getElementById('comms-toggle').checked, currentStage: 0, jobId: null };
+  state = { crit: 3, imgDataUrl: keepImg, imgName: keepName, samJudgment: null, fullReport: null, claudeParsed: null, currentStage: 0, jobId: null };
   document.getElementById('t-part').value = '';
   document.getElementById('t-part').style.borderColor = '';
   // Reset file input so same file can be selected again
