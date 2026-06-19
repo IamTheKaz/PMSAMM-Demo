@@ -435,6 +435,12 @@ function renderCrewImage() {
   return '<div style="min-height:220px;display:flex;align-items:center;justify-content:center;border:1px dashed #d4c8b6;border-radius:6px;color:#7c705a;font-size:11px;">No frame capture attached for this review.</div>';
 }
 
+function getCrewDisplayName() {
+  let crewInput = document.getElementById('t-crew');
+  let rawName = crewInput ? String(crewInput.value || '').trim() : '';
+  return rawName || 'Assigned Crew';
+}
+
 function closeCrewModal() {
   document.getElementById('crew-modal-backdrop').classList.add('hidden');
 }
@@ -469,12 +475,14 @@ function recordCrewResponseFromModal(index) {
 
 function maybeOpenCrewModalFromClaude(parsed, clabel) {
   if(!parsed) return;
+  let crewName = getCrewDisplayName();
   let title = '';
   let subtitle = '';
   let bodyHtml = '';
   let actions = [];
   let defect = escapeHtml(parsed.detected_defect || 'UNKNOWN');
   let summaryLines = [
+    'Crew member: <strong>' + escapeHtml(crewName) + '</strong>',
     'Action required: <strong>' + escapeHtml(parsed.action_required || 'NONE') + '</strong>',
     'Detected defect: <strong>' + defect + '</strong>',
     'Criticality: <strong>' + escapeHtml(clabel) + '</strong>'
@@ -483,24 +491,24 @@ function maybeOpenCrewModalFromClaude(parsed, clabel) {
   if(parsed.autonomous_corrections) summaryLines.push('Proposed changes: ' + escapeHtml(parsed.autonomous_corrections));
 
   if(parsed.action_required === 'CREW_APPROVAL') {
-    title = 'Crew Approval Required';
-    subtitle = 'Claude recommends autonomous changes, but this print cannot proceed until the crew signs off.';
+    title = crewName + ' - Crew Approval Required';
+    subtitle = 'Claude recommends autonomous changes, but this print cannot proceed until ' + crewName + ' signs off.';
     bodyHtml = formatCrewDetailLines(summaryLines);
     actions = [
       { label: 'Approve Autonomous Changes', details: 'Crew approved Claude-recommended changes and authorized continuation.', variant: '' },
       { label: 'Override Recommendations', details: 'Crew rejected autonomous changes and requested manual handling.', variant: 'red' }
     ];
   } else if(parsed.action_required === 'PAUSE_AND_INSPECT') {
-    title = 'Pause And Inspect';
-    subtitle = 'Claude requires a physical inspection before the print may resume.';
+    title = crewName + ' - Pause And Inspect';
+    subtitle = 'Claude requires a physical inspection from ' + crewName + ' before the print may resume.';
     bodyHtml = formatCrewDetailLines(summaryLines);
     actions = [
       { label: 'Inspected - Resume', details: 'Crew completed inspection and approved resume.', variant: '' },
       { label: 'Confirm Abort', details: 'Crew inspection escalated this print to abort.', variant: 'red' }
     ];
   } else if(parsed.action_required === 'ABORT') {
-    title = 'Abort Notification';
-    subtitle = 'Claude has determined the print must be terminated and the crew must complete post-abort handling.';
+    title = crewName + ' - Abort Notification';
+    subtitle = 'Claude has determined the print must be terminated and ' + crewName + ' must complete post-abort handling.';
     bodyHtml = formatCrewDetailLines(summaryLines);
     actions = [
       { label: 'Acknowledge + FOD Sweep', details: 'Crew acknowledged the abort and confirmed FOD sweep procedures.', variant: 'red' },
@@ -514,14 +522,18 @@ function maybeOpenCrewModalFromClaude(parsed, clabel) {
 }
 
 function maybeOpenCrewModalForCommsLoss(j, clabel) {
+  let crewName = getCrewDisplayName();
   let defect = normalizeDefectLabel(j.e || '');
   let needsVisualConfirm = defect !== 'none' || (defect === 'none' && state.crit >= 2);
   if(!needsVisualConfirm) return;
-  let title = defect === 'none' ? 'Crew Visual Confirmation Required' : 'Crew Review Required - Comms Blackout';
+  let title = defect === 'none'
+    ? crewName + ' - Crew Visual Confirmation Required'
+    : crewName + ' - Crew Review Required - Comms Blackout';
   let subtitle = defect === 'none'
-    ? 'Communications are down and this Level ' + state.crit + ' part still needs a human visual confirmation before continuing.'
-    : 'Communications are down. The crew must make the local go/no-go decision from the frame capture.';
+    ? 'Communications are down and this Level ' + state.crit + ' part still needs visual confirmation from ' + crewName + ' before continuing.'
+    : 'Communications are down. ' + crewName + ' must make the local go/no-go decision from the frame capture.';
   let bodyHtml = formatCrewDetailLines([
+    'Crew member: <strong>' + escapeHtml(crewName) + '</strong>',
     'SAM label: <strong>' + escapeHtml(String(j.e || 'UNKNOWN').toUpperCase()) + '</strong>',
     'SAM confidence: <strong>' + escapeHtml(String(j.c || 0)) + '%</strong>',
     'Criticality: <strong>' + escapeHtml(clabel) + '</strong>',
