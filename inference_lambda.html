@@ -283,9 +283,43 @@ def lambda_handler(event, context):
     image_type  = body.get("imageType", "image/jpeg")
     job_id      = body.get("job_id", str(uuid.uuid4()))
     meta        = body.get("meta", {})
+    sam_result  = body.get("sam_result", {}) or {}
+
+    incoming_sam_label = str(
+        sam_result.get("label") or
+        body.get("sam_label") or
+        meta.get("sam_label") or
+        ""
+    ).strip()
+    incoming_sam_conf = str(
+        sam_result.get("confidence") if sam_result.get("confidence") is not None else
+        body.get("sam_confidence") if body.get("sam_confidence") is not None else
+        meta.get("sam_confidence") if meta.get("sam_confidence") is not None else
+        ""
+    ).strip()
+    incoming_sam_summary = str(sam_result.get("summary") or "").strip()
+
+    print(
+        "Incoming SAM handoff:",
+        json.dumps({
+            "job_id": job_id,
+            "sam_label": incoming_sam_label,
+            "sam_confidence": incoming_sam_conf,
+            "sam_summary_present": bool(incoming_sam_summary)
+        })
+    )
 
     if not report_text:
         return respond(400, {"error": "No report text provided"})
+
+    # Always append a structured SAM handoff block so Claude sees the exact values
+    # even if frontend report formatting drifts.
+    report_text += (
+        "\n\n-- SAM HANDOFF SNAPSHOT ---------------------------\n"
+        f"sam_label: {incoming_sam_label or 'UNKNOWN'}\n"
+        f"sam_confidence: {incoming_sam_conf or 'UNKNOWN'}\n"
+        f"sam_summary: {incoming_sam_summary or 'NONE'}\n"
+    )
 
     # ----------------------------------------------------------------
     # CHECK JOB HISTORY BEFORE CALLING BEDROCK
@@ -422,7 +456,7 @@ def lambda_handler(event, context):
         # Extract compliance fields
         action, risk, notify, defect, crew_msg, auto_correct, telemetry_adj = extract_compliance(raw_text)
 
-        sam_label     = meta.get("sam_label", "")
+        sam_label     = incoming_sam_label or meta.get("sam_label", "")
         override_flag = determine_override(sam_label, defect)
 
         ts = datetime.now(timezone.utc).isoformat()
@@ -435,7 +469,7 @@ def lambda_handler(event, context):
             "part_description":       meta.get("part_description", ""),
             "criticality":            str(meta.get("criticality", "")),
             "print_progress":         str(meta.get("print_progress", "")),
-            "sam_confidence":         str(meta.get("sam_confidence", "")),
+            "sam_confidence":         str(incoming_sam_conf or meta.get("sam_confidence", "")),
             "sam_label":              sam_label,
             "risk_level":             risk,
             "action_required":        action,

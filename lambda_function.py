@@ -1,14 +1,21 @@
 import base64
 import io
+import importlib.util
 import json
 import os
-import traceback
 from pathlib import Path
+import sys
+import traceback
 
 import numpy as np
 from PIL import Image
 
-MODEL_PATH = Path(os.environ.get("MODEL_PATH", "/var/task/sam_model.tflite"))
+DEFAULT_MODEL_PATH = "/var/task/sam_model.tflite"
+MODEL_CANDIDATES = [
+    DEFAULT_MODEL_PATH,
+    "/opt/sam_model.tflite",
+    "/opt/python/sam_model.tflite",
+]
 IMAGE_SIZE = (224, 224)
 CLASS_LABELS = {
     0: "none",
@@ -26,6 +33,31 @@ _INTERPRETER = None
 _INPUT_DETAILS = None
 _OUTPUT_DETAILS = None
 _BACKEND_NAME = None
+_MODEL_PATH = None
+
+
+def bootstrap_layer_paths():
+    # Code-only fallback: include common Lambda layer package paths if present.
+    prefixes = ["/opt/python", "/opt/python/lib"]
+    for prefix in prefixes:
+        if os.path.isdir(prefix) and prefix not in sys.path:
+            sys.path.append(prefix)
+
+    lib_root = "/opt/python/lib"
+    if os.path.isdir(lib_root):
+        for child in os.listdir(lib_root):
+            candidate = os.path.join(lib_root, child, "site-packages")
+            if os.path.isdir(candidate) and candidate not in sys.path:
+                sys.path.append(candidate)
+
+
+def resolve_model_path():
+    env_model = os.environ.get("MODEL_PATH")
+    candidates = [env_model] + MODEL_CANDIDATES if env_model else MODEL_CANDIDATES
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return Path(candidate)
+    return Path(candidates[0])
 
 
 def respond(status_code, body):
@@ -37,10 +69,12 @@ def respond(status_code, body):
 
 
 def load_interpreter():
-    global _INTERPRETER, _INPUT_DETAILS, _OUTPUT_DETAILS, _BACKEND_NAME
+    global _INTERPRETER, _INPUT_DETAILS, _OUTPUT_DETAILS, _BACKEND_NAME, _MODEL_PATH
     if _INTERPRETER is not None:
         print(f"Reusing cached interpreter via {_BACKEND_NAME}")
         return _INTERPRETER, _INPUT_DETAILS, _OUTPUT_DETAILS
+
+    bootstrap_layer_paths()
 
     interpreter_cls = None
     try:
@@ -59,11 +93,14 @@ def load_interpreter():
                 "No TensorFlow Lite interpreter available. Package tflite-runtime or tensorflow with the Lambda."
             ) from exc
 
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(f"Model file not found at {MODEL_PATH}")
+    _MODEL_PATH = resolve_model_path()
+    if not _MODEL_PATH.exists():
+        raise FileNotFoundError(
+            f"Model file not found. Tried: {', '.join([p for p in [os.environ.get('MODEL_PATH')] + MODEL_CANDIDATES if p])}"
+        )
 
-    print(f"Loading TFLite model from {MODEL_PATH} using {_BACKEND_NAME}")
-    _INTERPRETER = interpreter_cls(model_path=str(MODEL_PATH))
+    print(f"Loading TFLite model from {_MODEL_PATH} using {_BACKEND_NAME}")
+    _INTERPRETER = interpreter_cls(model_path=str(_MODEL_PATH))
     _INTERPRETER.allocate_tensors()
     _INPUT_DETAILS = _INTERPRETER.get_input_details()[0]
     _OUTPUT_DETAILS = _INTERPRETER.get_output_details()[0]
@@ -71,7 +108,9 @@ def load_interpreter():
         "Interpreter ready:",
         json.dumps(
             {
-                "input_shape": _INPUT_DETAILS.get("shape", []).tolist() if hasattr(_INPUT_DETAILS.get("shape", []), "tolist") else _INPUT_DETAILS.get("shape", []),
+                "input_shape": _INPUT_DETAILS.get("shape", []).tolist()
+                if hasattr(_INPUT_DETAILS.get("shape", []), "tolist")
+                else _INPUT_DETAILS.get("shape", []),
                 "input_dtype": str(_INPUT_DETAILS.get("dtype")),
                 "output_dtype": str(_OUTPUT_DETAILS.get("dtype")),
                 "quantization": _OUTPUT_DETAILS.get("quantization", (0.0, 0)),
@@ -172,7 +211,7 @@ def lambda_handler(event, context):
                 "method": method,
                 "has_body": bool(event.get("body")),
                 "is_base64_encoded": bool(event.get("isBase64Encoded")),
-                "model_path": str(MODEL_PATH),
+                "configured_model_path": os.environ.get("MODEL_PATH", DEFAULT_MODEL_PATH),
             }
         ),
     )
@@ -187,7 +226,27 @@ def lambda_handler(event, context):
 
     if body.get("action") == "ping":
         print(f"SAM ping request handled for {request_id}")
-        return respond(200, {"status": "ok", "model_path": str(MODEL_PATH)})
+        return respond(200, {"status": "ok", "model_path": str(resolve_model_path())})
+
+    if body.get("action") == "diag":
+        print(f"SAM diagnostic request handled for {request_id}")
+        return respond(
+            200,
+            {
+                "status": "diag",
+                "python_version": sys.version,
+                "executable": sys.executable,
+                "cwd": os.getcwd(),
+                "model_path": str(resolve_model_path()),
+                "model_exists": resolve_model_path().exists(),
+                "model_candidates": [p for p in [os.environ.get("MODEL_PATH")] + MODEL_CANDIDATES if p],
+                "has_tflite_runtime": bool(importlib.util.find_spec("tflite_runtime")),
+                "has_tensorflow": bool(importlib.util.find_spec("tensorflow")),
+                "has_numpy": bool(importlib.util.find_spec("numpy")),
+                "has_pillow": bool(importlib.util.find_spec("PIL")),
+                "sys_path": sys.path,
+            },
+        )
 
     try:
         image_bytes = decode_image_field(body.get("image"))

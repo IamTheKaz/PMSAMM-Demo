@@ -861,6 +861,11 @@ async function callBedrock(reportText) {
     let payload = {
       report:  reportText,
       job_id:  state.jobId,
+      sam_result: state.samJudgment ? {
+        label: state.samJudgment.e || '',
+        confidence: Number(state.samJudgment.c || 0),
+        summary: state.samJudgment.j || ''
+      } : null,
       meta: {
         crew_member:      document.getElementById('t-crew').value || '',
         part_description: document.getElementById('t-part').value || '',
@@ -870,6 +875,7 @@ async function callBedrock(reportText) {
         sam_label:        state.samJudgment ? state.samJudgment.e : ''
       }
     };
+    console.log('BEDROCK PAYLOAD SAM HANDOFF:', payload.sam_result, payload.meta.sam_label, payload.meta.sam_confidence);
     if(state.imgDataUrl) {
       payload.image = state.imgDataUrl;
       payload.imageType = state.imgDataUrl.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
