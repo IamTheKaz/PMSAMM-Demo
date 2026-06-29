@@ -1,0 +1,322 @@
+==================================================
+  SAM - PMSAMM | HAVEN-1 BAY 3
+  PREVENTATIVE MAINTENANCE SYSTEM - ADDITIVE
+  MANUFACTURING MONITORING
+  System Overview & Workflow Documentation
+==================================================
+
+
+-- SYSTEM PURPOSE --
+
+SAM (Structural Anomaly Monitor) is an AI-assisted monitoring
+system for 3D printing operations aboard Haven-1 Bay 3. It
+detects print defects in real time, assesses risk based on
+part criticality, and determines whether autonomous corrections,
+crew notification, or mission abort is required.
+
+The system is designed to operate with or without ground
+communications. When comms are available, Claude AI on AWS
+Bedrock provides the final structured decision. When comms
+are lost, SAM's own prediction governs the outcome.
+
+
+-- ARCHITECTURE --
+
+The system has three components:
+
+1. Frontend (SAM_PMSAMM_demo-2.html)
+   Served from GitHub Pages. Runs entirely in the browser.
+   No local dependencies required.
+
+2. SAM Inference Lambda
+   AWS Lambda Function URL
+   Accepts: POST { image: <data URL or base64> }
+   Returns: { label, confidence, raw_scores }
+   Downloads sam_model.tflite from GitHub on cold start.
+   Uses ai_edge_litert for TFLite inference.
+   Classes: none, underextrusion, stringing, spaghetti.
+
+3. Claude Analysis Lambda (Bedrock)
+   AWS API Gateway endpoint
+   Accepts: POST { report, image, job_id, sam_result, meta }
+   Calls Claude claude-sonnet-4-6 via Amazon Bedrock.
+   Returns structured defect assessment, crew message,
+   action required, telemetry adjustments, risk level.
+   Logs all runs and crew notifications to DynamoDB.
+
+
+-- FULL PIPELINE WALKTHROUGH --
+
+Stage 0 - Telemetry Input
+   Operator fills in:
+   - Nozzle temp, bed temp, print speed, layer height
+   - Extrusion rate, retraction, vibration, progress %
+   - Material, component/part description
+   - Crew member name
+   - Criticality level (1 / 2 / 3)
+   - Optional: comms blackout toggle
+   - Optional: SAM error label override (demo/training use)
+   Operator loads a frame capture image.
+   Operator clicks Run SAM Analysis.
+
+Stage 1 - SAM Inference (automatic)
+   Frontend POSTs the image as a data URL to the SAM
+   Lambda Function URL.
+   SAM Lambda runs TFLite model inference.
+   Returns label (none / underextrusion / stringing /
+   spaghetti), confidence %, and raw per-class scores.
+   If confidence is below 55%, label is overridden to
+   low confidence (unsure).
+   Frontend stores result in state.samJudgment.
+   Display shows label and raw scores.
+
+Stage 2 - Rekognition (simulated)
+   Rekognition is simulated in demo mode.
+   In deployment this stage would call AWS Rekognition
+   on the frame capture and return bounding boxes and
+   label confidence scores.
+   Results are incorporated into the report text sent
+   to Claude.
+
+Stage 3 - Claude AI Analysis (automatic)
+   Frontend builds a structured report combining:
+   - All telemetry values
+   - SAM prediction (label, confidence, summary)
+   - Rekognition result
+   - Part description and crew member name
+   - Criticality level and print history context
+   - The frame capture image (base64)
+   Frontend POSTs this to the Claude analysis endpoint.
+   Claude returns:
+   - Full sectioned markdown analysis
+   - action_required (NONE / PAUSE_AND_INSPECT /
+     CREW_APPROVAL / ABORT)
+   - risk_level (LOW / MEDIUM / HIGH)
+   - notify_crew (true / false)
+   - detected_defect
+   - crew_message (actual text to display to crew)
+   - autonomous_corrections
+   - telemetry_adjustments (JSON object)
+
+Stage 4 - Outcome
+   Final disposition is shown.
+   SAM vs Claude agreement comparison is displayed.
+   If notify_crew is true or action is escalated,
+   a crew modal popup opens.
+
+
+-- CREW MODAL POPUP --
+
+The modal appears automatically based on the outcome.
+It always includes:
+- Crew member name from the telemetry input field
+- Attached frame capture image
+- Defect summary, action required, crew message
+- Response buttons
+
+Trigger conditions:
+
+  CREW_APPROVAL
+    Claude recommends parameter corrections but mission-
+    critical status requires crew sign-off before the
+    print continues.
+    Buttons: Approve Autonomous Changes / Override
+
+  PAUSE_AND_INSPECT
+    Claude requires a physical bay inspection before
+    the print resumes.
+    Buttons: Inspected - Resume / Confirm Abort
+
+  ABORT
+    Claude has determined the print must be terminated.
+    Crew must perform FOD sweep and post-abort procedures.
+    Buttons: Acknowledge + FOD Sweep / Hold For Review
+
+  Comms blackout + defect detected
+    SAM detected a defect but no Claude decision is
+    available. Crew must make the local go/no-go call.
+    Buttons: Approve - Continue / Flag - Pause Print
+
+  Comms blackout + Level 2 or 3 + no defect
+    Even with no anomaly, high-criticality parts require
+    crew visual confirmation during blackout.
+    Buttons: Approve - Continue / Flag - Pause Print
+
+
+-- CRITICALITY LEVELS --
+
+Level 1 - Non-Critical
+  Decorative or aesthetic parts only.
+  Autonomous corrections applied without crew notification
+  for fixable defects.
+  Catastrophic failure (spaghetti) triggers crew alert.
+  End of print triggers crew summary notification.
+
+Level 2 - Semi-Critical
+  Minor functional parts. Failure degrades but does not
+  halt operations.
+  Fixable defects with low continuation risk: autonomous
+  corrections, no crew notification.
+  Fixable defects with high continuation risk: crew pause.
+  Catastrophic failure: crew abort notification.
+  End of print: crew summary notification.
+
+Level 3 - Mission-Critical
+  Structural, life support, or safety-adjacent components.
+  Any defect triggers crew approval requirement.
+  Print is halted until crew approves continuation.
+  End of print: crew summary notification.
+
+
+-- COMMS BLACKOUT MODE --
+
+Toggle activates when ground comms are unavailable.
+Claude call is bypassed entirely.
+SAM prediction governs the outcome.
+
+If SAM confidence is above 80%:
+  Autonomous decision issued.
+  Crew popup shown if defect detected (any level) or
+  if part is Level 2 or Level 3 with no defect.
+
+If SAM confidence is below 80%:
+  Manual review required.
+  Crew popup always shown for inspection.
+
+After crew responds via popup, their decision is logged
+in the outcome section.
+
+
+-- PRINT HISTORY AND ABORT ESCALATION --
+
+Each run is logged to DynamoDB with job_id.
+Job ID is generated from part name, crew name, and date.
+The same job_id persists across multiple runs in a session
+(Continue Monitoring This Print preserves it).
+
+The analysis Lambda checks print history before calling
+Claude. Automatic abort is triggered if:
+
+  PERSISTENT ERROR
+    Same defect detected 2 or more times in the same job
+    after autonomous corrections were already applied.
+
+  UNSTABLE PRINT
+    Two or more different defect types detected in the
+    same job.
+
+In both cases an ABORT response is returned immediately
+without calling Claude.
+
+
+-- SESSION BEHAVIOR --
+
+Continue Monitoring This Print
+  Resets SAM judgment, Rekognition, and Claude result.
+  Preserves job_id (so print history accumulates).
+  Preserves image and criticality level.
+  Preserves comms state.
+  Clears SAM override dropdown.
+
+New Monitoring Session
+  Full reset of all state.
+  New job_id generated on next run.
+  Image cleared.
+  Comms reset to nominal.
+  Crew name and part description cleared.
+
+End of Print (Print Complete button)
+  Sends a full end-of-print report to Claude.
+  Claude generates pass/fail status.
+  Lists all autonomous corrections and crew interventions.
+  Estimates total filament used.
+  Sends crew notification summary.
+  Job is marked complete.
+
+
+-- SAM LABEL DEFINITIONS --
+
+none
+  No defect detected. Print is progressing normally.
+
+underextrusion
+  Insufficient material deposition. Partial clog or
+  temperature issue. Visible gaps or weak layer bonding.
+  Correctable by increasing nozzle temp, extrusion rate,
+  or slowing print speed.
+
+stringing
+  Fine filament wisps between features. Caused by
+  retraction or temperature mismatch. Correctable by
+  increasing retraction distance or reducing temp.
+
+spaghetti
+  Catastrophic extrusion failure. Filament depositing
+  randomly with no layer structure. Print must be stopped.
+  FOD sweep required due to debris risk in microgravity.
+
+low confidence (unsure)
+  Model confidence below 55%. Visual appearance
+  ambiguous. Claude uses image directly for assessment
+  instead of relying on SAM label.
+
+
+-- MICROGRAVITY CONSIDERATIONS --
+
+All defects are evaluated in the context of microgravity:
+
+  FOD (Foreign Object Debris) Risk
+    Loose filament strands do not fall in microgravity.
+    Any stringing or spaghetti creates floating debris.
+    FOD sweep is required after any abort.
+
+  Cooling Behavior
+    Airflow patterns differ in microgravity.
+    Layer cooling is less predictable.
+    Warping and delamination risk varies.
+
+  Surface Tension Effects
+    Molten filament behaves differently without gravity.
+    Blobbing and ooze are amplified.
+    Retraction tuning is critical.
+
+
+-- ENDPOINT REFERENCE --
+
+SAM Inference Lambda (Function URL)
+  https://wtcqbp7rmnoy3pf7hty2bcyoea0dcese.lambda-url.us-west-2.on.aws/
+  POST { image: <data URL> }
+  Returns: { label, confidence, raw_scores }
+  Special: POST { action: "ping" } returns health status
+  Special: POST { action: "diag" } returns runtime state
+
+Claude Analysis Lambda (API Gateway)
+  https://a3rb7swog2.execute-api.us-west-2.amazonaws.com/analyze
+  POST { report, image, job_id, sam_result, meta }
+  Returns: full analysis + compliance log + DynamoDB entry
+
+
+-- EXPECTED RESPONSE EXAMPLES --
+
+SAM success:
+  { "label": "spaghetti", "confidence": 99.9,
+    "raw_scores": { "none": 0.0, "underextrusion": 0.0,
+    "stringing": 0.1, "spaghetti": 99.9 } }
+
+SAM low confidence:
+  { "label": "low confidence (unsure)", "confidence": 41.2,
+    "raw_scores": { ... } }
+
+Claude compliance log (in response text):
+  action_required: CREW_APPROVAL
+  risk_level: HIGH
+  notify_crew: true
+  detected_defect: SPAGHETTI
+  crew_message: Commander Harris - Bay 3 print terminated.
+  autonomous_corrections: NONE - catastrophic failure
+  telemetry_adjustments: {}
+
+
+==================================================
+  END OF SYSTEM OVERVIEW
+==================================================
