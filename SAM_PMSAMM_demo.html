@@ -7,6 +7,26 @@
 </head>
 <body>
 
+<!-- SAM boot overlay -->
+<div id="sam-boot">
+
+  <!-- Black splash with logo and button -->
+  <div id="sam-boot-splash">
+    <div id="sam-boot-splash-logo">SAM</div>
+    <div id="sam-boot-splash-sub">Preventative Maintenance System &nbsp;·&nbsp; Haven-1</div>
+    <button id="sam-boot-splash-btn" onclick="initBoot()">&#9654;&nbsp; INITIALIZE</button>
+    <div id="sam-boot-splash-hint">Haven-1 &nbsp;·&nbsp; Bay 3 &nbsp;·&nbsp; Unit 3DP-H1-007</div>
+  </div>
+
+  <!-- Video screen shown after click -->
+  <div id="sam-boot-video-screen">
+    <video id="sam-boot-video" playsinline src="samiam.mp4"></video>
+    <div id="sam-boot-video-label">SAM — PMSAMM &nbsp;·&nbsp; Haven-1 Bay 3 &nbsp;·&nbsp; Initializing...</div>
+  </div>
+
+</div>
+
+
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: var(--font-mono, 'Courier New', monospace); background: #f5f1e7; }
@@ -103,6 +123,88 @@
   @media (max-width: 760px) {
     .crew-modal-grid { grid-template-columns: 1fr; }
   }
+
+  /* ── SAM boot overlay ── */
+  #sam-boot {
+    position: fixed; inset: 0; z-index: 9999;
+    background: #000;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    transition: opacity 1.2s ease;
+  }
+  #sam-boot.fade-out { opacity: 0; pointer-events: none; }
+
+  /* Splash screen */
+  #sam-boot-splash {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 48px;
+  }
+  #sam-boot-splash-logo {
+    font-family: 'Courier New', monospace;
+    font-size: 36px; font-weight: 700;
+    letter-spacing: 14px; color: #fff;
+    text-transform: uppercase;
+    text-shadow: 0 0 40px rgba(0,51,160,0.9);
+    margin-bottom: 10px;
+  }
+  #sam-boot-splash-sub {
+    font-family: 'Courier New', monospace;
+    font-size: 11px; letter-spacing: 4px;
+    color: #0066ff; text-transform: uppercase;
+    margin-bottom: 64px;
+  }
+  #sam-boot-splash-btn {
+    font-family: 'Courier New', monospace;
+    font-size: 12px; letter-spacing: 4px;
+    color: #fff; text-transform: uppercase;
+    border: 1px solid rgba(255,255,255,0.35);
+    padding: 16px 56px; border-radius: 3px;
+    background: transparent; cursor: pointer;
+    animation: splash-pulse 2s ease-in-out infinite;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  #sam-boot-splash-btn:hover { border-color: #0033a0; color: #0066ff; }
+  @keyframes splash-pulse {
+    0%,100% { box-shadow: 0 0 0px rgba(0,51,160,0); }
+    50% { box-shadow: 0 0 22px rgba(0,51,160,0.7); }
+  }
+  #sam-boot-splash-hint {
+    font-family: 'Courier New', monospace;
+    font-size: 9px; letter-spacing: 2px;
+    color: #444; text-transform: uppercase;
+    margin-top: 20px;
+  }
+
+  /* Video screen */
+  #sam-boot-video-screen {
+    display: none;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    width: 100%; height: 100%;
+    padding: 48px;
+    box-sizing: border-box;
+  }
+  #sam-boot-video-screen.active { display: flex; }
+  #sam-boot-video {
+    max-width: 680px;
+    width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 0 60px rgba(0,51,160,0.3);
+  }
+  #sam-boot-video-label {
+    font-family: 'Courier New', monospace;
+    font-size: 10px; letter-spacing: 3px;
+    color: #0066ff; text-transform: uppercase;
+    margin-top: 20px;
+    opacity: 0;
+    animation: none;
+  }
+  #sam-boot-video-label.show {
+    animation: label-fade 0.8s ease forwards;
+  }
+  @keyframes label-fade { to { opacity: 1; } }
+
 </style>
 
 <div class="sam-shell">
@@ -1270,6 +1372,33 @@ function runPrinterConnectSequence() {
 
 // Run connect sequence on initial load
 runPrinterConnectSequence();
+</script>
+
+
+<script>
+(function() {
+  window.initBoot = function() {
+    var splash = document.getElementById('sam-boot-splash');
+    var screen = document.getElementById('sam-boot-video-screen');
+    var label  = document.getElementById('sam-boot-video-label');
+    var vid    = document.getElementById('sam-boot-video');
+
+    splash.style.display = 'none';
+    screen.classList.add('active');
+
+    setTimeout(function() { label.classList.add('show'); }, 600);
+
+    vid.play();
+
+    vid.addEventListener('ended', function() {
+      setTimeout(function() {
+        var boot = document.getElementById('sam-boot');
+        boot.classList.add('fade-out');
+        setTimeout(function() { boot.style.display = 'none'; }, 1250);
+      }, 500);
+    });
+  };
+})();
 </script>
 
 </body>
