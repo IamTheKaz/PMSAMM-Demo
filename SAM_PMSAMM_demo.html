@@ -10,7 +10,7 @@
 <!-- SAM boot overlay -->
 <div id="sam-boot">
 
-  <!-- Black splash with logo and button -->
+  <!-- 1. Black splash -->
   <div id="sam-boot-splash">
     <div id="sam-boot-splash-logo">SAM</div>
     <div id="sam-boot-splash-sub">Preventative Maintenance System &nbsp;·&nbsp; Haven-1</div>
@@ -18,10 +18,28 @@
     <div id="sam-boot-splash-hint">Haven-1 &nbsp;·&nbsp; Bay 3 &nbsp;·&nbsp; Unit 3DP-H1-007</div>
   </div>
 
-  <!-- Video screen shown after click -->
+  <!-- 2. Boot lines -->
+  <div id="sam-boot-lines-screen">
+    <div id="sam-boot-lines-logo">SAM</div>
+    <div id="sam-boot-lines-sub">Preventative Maintenance System · Haven-1</div>
+    <div id="sam-boot-lines">
+      <span class="boot-line ok">SYSTEM KERNEL LOADED</span>
+      <span class="boot-line ok">HAVEN-1 BAY 3 — UNIT 3DP-H1-007</span>
+      <span class="boot-line ok">SAM EDGE MODEL INITIALIZING</span>
+      <span class="boot-line ok">AWS REKOGNITION HANDSHAKE ESTABLISHED</span>
+      <span class="boot-line ok">CLAUDE via BEDROCK — REASONING LAYER READY</span>
+      <span class="boot-line ok">DYNAMODB AUDIT LOG CONNECTED</span>
+      <span class="boot-line warn">STARLINK UPLINK — SIGNAL NOMINAL</span>
+      <span class="boot-line ok">ALL SYSTEMS NOMINAL — READY FOR PRINT JOB</span>
+    </div>
+    <div id="sam-boot-bar-wrap"><div id="sam-boot-bar"></div></div>
+    <div id="sam-boot-status">Initializing...</div>
+  </div>
+
+  <!-- 3. Video (preloaded, paused at frame 0) -->
   <div id="sam-boot-video-screen">
-    <video id="sam-boot-video" playsinline src="samiam.mp4"></video>
-    <div id="sam-boot-video-label">SAM — PMSAMM &nbsp;·&nbsp; Haven-1 Bay 3 &nbsp;·&nbsp; Initializing...</div>
+    <video id="sam-boot-video" playsinline preload="auto" src="samiam.mp4"></video>
+    <div id="sam-boot-video-label">SAM — PMSAMM &nbsp;·&nbsp; Haven-1 Bay 3</div>
   </div>
 
 </div>
@@ -176,19 +194,67 @@
     margin-top: 20px;
   }
 
-  /* Video screen */
+  /* Boot lines screen */
+  #sam-boot-lines-screen {
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 48px; width: 100%; box-sizing: border-box;
+  }
+  #sam-boot-lines-screen.active { display: flex; }
+  #sam-boot-lines-logo {
+    font-family: 'Courier New', monospace;
+    font-size: 28px; font-weight: 700;
+    letter-spacing: 10px; color: #fff;
+    text-transform: uppercase; margin-bottom: 6px;
+    text-shadow: 0 0 30px rgba(0,51,160,0.9);
+  }
+  #sam-boot-lines-sub {
+    font-family: 'Courier New', monospace;
+    font-size: 11px; letter-spacing: 4px;
+    color: #0066ff; text-transform: uppercase;
+    margin-bottom: 36px;
+  }
+  #sam-boot-lines {
+    font-family: 'Courier New', monospace;
+    font-size: 11px; letter-spacing: 1.5px;
+    color: #00cc66; text-align: left;
+    width: min(480px, 90vw);
+    line-height: 2; min-height: 160px;
+  }
+  #sam-boot-lines .boot-line {
+    display: block; opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+  #sam-boot-lines .boot-line.show { opacity: 1; transform: translateY(0); }
+  #sam-boot-lines .boot-line.ok::after { content: '  [ OK ]'; color: #00ff88; }
+  #sam-boot-lines .boot-line.warn::after { content: '  [ STANDBY ]'; color: #ffaa00; }
+  #sam-boot-bar-wrap {
+    width: min(480px, 90vw); margin-top: 20px;
+    height: 2px; background: rgba(255,255,255,0.1);
+    border-radius: 2px; overflow: hidden;
+  }
+  #sam-boot-bar {
+    height: 100%; width: 0%;
+    background: #0033a0; box-shadow: 0 0 8px #0033a0;
+    transition: width 0.4s ease;
+  }
+  #sam-boot-status {
+    font-family: 'Courier New', monospace;
+    font-size: 10px; letter-spacing: 2px;
+    color: #555; margin-top: 10px; text-transform: uppercase;
+  }
+
+  /* Video screen — hidden behind lines screen until ready */
   #sam-boot-video-screen {
-    display: none;
-    flex-direction: column;
+    display: none; flex-direction: column;
     align-items: center; justify-content: center;
     width: 100%; height: 100%;
-    padding: 48px;
-    box-sizing: border-box;
+    padding: 48px; box-sizing: border-box;
   }
   #sam-boot-video-screen.active { display: flex; }
   #sam-boot-video {
-    max-width: 680px;
-    width: 100%;
+    max-width: 680px; width: 100%;
     border-radius: 8px;
     box-shadow: 0 0 60px rgba(0,51,160,0.3);
   }
@@ -196,14 +262,10 @@
     font-family: 'Courier New', monospace;
     font-size: 10px; letter-spacing: 3px;
     color: #0066ff; text-transform: uppercase;
-    margin-top: 20px;
-    opacity: 0;
-    animation: none;
+    margin-top: 20px; opacity: 0;
+    transition: opacity 0.8s ease;
   }
-  #sam-boot-video-label.show {
-    animation: label-fade 0.8s ease forwards;
-  }
-  @keyframes label-fade { to { opacity: 1; } }
+  #sam-boot-video-label.show { opacity: 1; }
 
 </style>
 
@@ -1377,25 +1439,53 @@ runPrinterConnectSequence();
 
 <script>
 (function() {
+  var vid = document.getElementById('sam-boot-video');
+  // Preload and prime the video immediately on page load
+  // so it's ready to play synchronously when we need it
+  vid.load();
+
   window.initBoot = function() {
-    var splash = document.getElementById('sam-boot-splash');
-    var screen = document.getElementById('sam-boot-video-screen');
-    var label  = document.getElementById('sam-boot-video-label');
-    var vid    = document.getElementById('sam-boot-video');
+    var splash      = document.getElementById('sam-boot-splash');
+    var linesScreen = document.getElementById('sam-boot-lines-screen');
+    var videoScreen = document.getElementById('sam-boot-video-screen');
+    var label       = document.getElementById('sam-boot-video-label');
+    var bar         = document.getElementById('sam-boot-bar');
+    var status      = document.getElementById('sam-boot-status');
+    var lines       = document.querySelectorAll('.boot-line');
+    var total       = lines.length;
+    var lineDelay   = 600;
+
+    // --- KEY FIX: call play() immediately inside the click handler ---
+    // This locks in the user gesture for audio. We pause right after
+    // so the video doesn't audibly start yet, but the gesture is captured.
+    vid.play().then(function() { vid.pause(); vid.currentTime = 0; }).catch(function(){});
 
     splash.style.display = 'none';
-    screen.classList.add('active');
+    linesScreen.classList.add('active');
 
-    setTimeout(function() { label.classList.add('show'); }, 600);
-
-    vid.play();
-
-    vid.addEventListener('ended', function() {
+    lines.forEach(function(line, i) {
       setTimeout(function() {
-        var boot = document.getElementById('sam-boot');
-        boot.classList.add('fade-out');
-        setTimeout(function() { boot.style.display = 'none'; }, 1250);
-      }, 500);
+        line.classList.add('show');
+        bar.style.width = Math.round(((i + 1) / total) * 100) + '%';
+        if (i === total - 1) {
+          status.textContent = 'Launch ready.';
+          status.style.color = '#00ff88';
+          setTimeout(function() {
+            linesScreen.style.display = 'none';
+            videoScreen.classList.add('active');
+            // play() here inherits the gesture unlock from above
+            vid.play();
+            setTimeout(function() { label.classList.add('show'); }, 400);
+            vid.addEventListener('ended', function() {
+              setTimeout(function() {
+                var boot = document.getElementById('sam-boot');
+                boot.classList.add('fade-out');
+                setTimeout(function() { boot.style.display = 'none'; }, 1250);
+              }, 500);
+            });
+          }, 1200);
+        }
+      }, i * lineDelay);
     });
   };
 })();
